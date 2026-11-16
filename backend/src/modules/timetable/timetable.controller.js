@@ -8,11 +8,13 @@ const { notifyUsers, sectionStudentUserIds, sectionLecturerUserIds } = require('
 const SELECT = `
   SELECT t.id, t.section_id, t.title, t.effective_from, t.effective_to, t.is_active, t.created_at,
          t.file_id, f.original_name, f.extension, f.size_bytes,
-         sec.name AS section_name, sec.semester_no, p.code AS program_code
+         sec.name AS section_name, sec.semester_no, p.code AS program_code,
+         sp.code AS specialization_code, sp.name AS specialization_name
     FROM timetables t
     JOIN files f ON f.id = t.file_id
     JOIN sections sec ON sec.id = t.section_id
-    JOIN programs p ON p.id = sec.program_id`;
+    JOIN programs p ON p.id = sec.program_id
+    LEFT JOIN specializations sp ON sp.id = sec.specialization_id`;
 
 // Student: active timetable of own section. Lecturer: sections he teaches. Admin: anything (filter by sectionId).
 exports.list = asyncHandler(async (req, res) => {

@@ -5,7 +5,7 @@ Smart Campus is a web application for managing academic operations across studen
 ## Features
 
 - Role-based accounts for students, lecturers, and administrators
-- Academic setup for departments, programs, academic years, sections, and subjects
+- Academic setup for departments, programs, academic years, sections, subjects, and admin-managed MCA Semester 3 specializations
 - Lecturer teaching assignments and student rosters
 - Timetables, study materials, announcements, and calendar events
 - Attendance marking, student summaries, reports, and attendance issue review
@@ -37,6 +37,8 @@ The backend is organized by feature modules in `backend/src/modules/`. The front
 - A database schema matching the Smart Campus API
 
 > **Database setup:** The SQL schema is not included in this repository. Create/import the Smart Campus schema in MySQL before starting the backend, then set `DB_NAME` in `backend/.env` to that database name. The backend component README refers to `smart_campus`.
+>
+> After importing the base schema, apply `backend/migrations/20261111_add_program_specializations.sql` to add MCA Semester 3 specialization management.
 
 ## Local Development
 

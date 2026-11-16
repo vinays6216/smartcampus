@@ -38,11 +38,16 @@ const lecturerBody = z.object({
 
 const listQuery = z.object({
   q: z.string().trim().optional(), programId: id.optional(), sectionId: id.optional(),
+  specializationId: id.optional(), semesterNo: id.optional(),
   departmentId: id.optional(), status: z.string().optional(), page: z.string().optional(), limit: z.string().optional(),
 });
 
 // ---- Students ----
 router.get('/students', validate({ query: listQuery }), c.listStudents);
+// move students to another section (semester change / choosing a specialization). Keep above "/students/:id".
+router.post('/students/move-section', validate({
+  body: z.object({ studentIds: z.array(id).min(1).max(500), sectionId: id }),
+}), c.moveStudents);
 router.get('/students/:id', validate({ params: idParam }), c.getStudent);
 router.post('/students', validate({ body: studentBody }), c.createStudent);
 router.put('/students/:id', validate({ params: idParam, body: studentBody.partial().omit({ password: true }) }), c.updateStudent);

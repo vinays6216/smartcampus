@@ -8,7 +8,7 @@ import FormModal from '../components/FormModal';
 import FileButton from '../components/FileButton';
 import { Async, Badge, Empty, PageHeader } from '../components/ui';
 import { fmtDate, fmtSize } from '../utils/format';
-import { errMsg, sectionLabel, toFormData } from '../utils/helpers';
+import { errMsg, sectionLabel, sectionShort, toFormData } from '../utils/helpers';
 
 // Student / lecturer: view. Admin: upload and manage.
 export default function Timetable() {
@@ -63,7 +63,7 @@ export default function Timetable() {
               <div>
                 <h2 style={{ marginBottom: '.2rem' }}>{t.title}</h2>
                 <div className="muted">
-                  {t.programCode} Sem {t.semesterNo} Section {t.sectionName} - from {fmtDate(t.effectiveFrom)}{t.effectiveTo && ` to ${fmtDate(t.effectiveTo)}`}
+                  {sectionShort(t)} - from {fmtDate(t.effectiveFrom)}{t.effectiveTo && ` to ${fmtDate(t.effectiveTo)}`}
                   {' '}- {t.originalName} ({fmtSize(t.sizeBytes)})
                 </div>
               </div>

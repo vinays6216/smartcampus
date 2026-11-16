@@ -32,9 +32,11 @@ const TONES = {
 export const tone = (status) => TONES[status] || 'gray';
 export const label = (s) => String(s ?? '').replace(/_/g, ' ');
 
-export const classLabel = (t) =>
-  `${t.subjectCode} - ${t.subjectName} | ${t.programCode} Sem ${t.semesterNo} Sec ${t.sectionName}`;
-export const sectionLabel = (s) => `${s.programCode} ${s.academicYear} Sem ${s.semesterNo} Sec ${s.name}`;
+// MCA: Sem 1-2 are common; from Sem 3 a section belongs to a specialization (WAD, DS, AIML)
+const spec = (x) => (x.specializationCode ? ` ${x.specializationCode}` : '');
+export const sectionShort = (x) => `${x.programCode} Sem ${x.semesterNo}${spec(x)} Sec ${x.sectionName ?? x.name}`;
+export const classLabel = (t) => `${t.subjectCode} - ${t.subjectName} | ${sectionShort(t)}`;
+export const sectionLabel = (s) => `${s.programCode} ${s.academicYear} Sem ${s.semesterNo}${spec(s)} Sec ${s.name}`;
 
 export function downloadCsv(filename, rows) {
   const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');

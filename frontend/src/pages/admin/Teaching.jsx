@@ -4,7 +4,7 @@ import useFetch from '../../hooks/useFetch';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/FormModal';
 import { Async, Empty, PageHeader } from '../../components/ui';
-import { clean, errMsg, sectionLabel } from '../../utils/helpers';
+import { clean, errMsg, sectionLabel, sectionShort } from '../../utils/helpers';
 
 // Teaching assignment = lecturer + subject + section. Attendance, assignments and materials all depend on it.
 export default function Teaching() {
@@ -20,18 +20,20 @@ export default function Teaching() {
   const lecturerOptions = (lecturers.data || []).map((l) => ({ value: l.id, label: `${l.fullName} (${l.employeeCode})` }));
   const sectionOptions = (sections.data || []).map((s) => ({ value: s.id, label: sectionLabel(s) }));
 
-  // only subjects of the selected section's program and semester are valid
+  // only valid subjects are offered: same program and semester as the section, and either a common subject
+  // or a subject of the section's own specialization (a Data Science subject cannot go to a WAD section)
   const subjectOptions = (v) => {
     const sec = (sections.data || []).find((s) => String(s.id) === String(v.sectionId));
     return (subjects.data || [])
-      .filter((s) => !sec || (s.programId === sec.programId && s.semesterNo === sec.semesterNo))
-      .map((s) => ({ value: s.id, label: `${s.code} - ${s.name}` }));
+      .filter((s) => !sec || (s.programId === sec.programId && s.semesterNo === sec.semesterNo
+        && (s.specializationId === null || s.specializationId === sec.specializationId)))
+      .map((s) => ({ value: s.id, label: `${s.code} - ${s.name}${s.specializationCode ? ` (${s.specializationCode} only)` : ' (common)'}` }));
   };
 
   const fields = [
     { name: 'lecturerId', label: 'Lecturer', type: 'select', required: true, options: lecturerOptions },
     { name: 'sectionId', label: 'Section', type: 'select', required: true, options: sectionOptions },
-    { name: 'subjectId', label: 'Subject', type: 'select', required: true, options: subjectOptions, hint: 'Shows subjects of the same program and semester as the section.' },
+    { name: 'subjectId', label: 'Subject', type: 'select', required: true, options: subjectOptions, hint: 'Shows subjects of the same program, semester and specialization as the section (plus common subjects).' },
   ];
 
   const create = async (v) => {
@@ -73,7 +75,7 @@ export default function Teaching() {
                     <tr key={t.id}>
                       <td>{t.lecturerName}</td>
                       <td><strong>{t.subjectCode}</strong> {t.subjectName}</td>
-                      <td>{t.programCode} Sem {t.semesterNo} Sec {t.sectionName}</td>
+                      <td>{sectionShort(t)}</td>
                       <td>{t.academicYear}</td>
                       <td>{t.studentCount}</td>
                       <td><button className="btn btn-sm btn-danger" onClick={() => remove(t)}>Remove</button></td>

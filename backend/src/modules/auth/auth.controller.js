@@ -52,8 +52,10 @@ exports.me = asyncHandler(async (req, res) => {
   if (role === 'student') {
     [[profile]] = await pool.query(
       `SELECT s.id, s.usn, s.status, p.code AS program_code, p.name AS program_name,
-              sec.id AS section_id, sec.name AS section_name, sec.semester_no
+              sec.id AS section_id, sec.name AS section_name, sec.semester_no,
+              sp.id AS specialization_id, sp.code AS specialization_code, sp.name AS specialization_name
          FROM students s JOIN programs p ON p.id = s.program_id JOIN sections sec ON sec.id = s.section_id
+         LEFT JOIN specializations sp ON sp.id = sec.specialization_id
         WHERE s.id = ?`,
       [profileId]
     );

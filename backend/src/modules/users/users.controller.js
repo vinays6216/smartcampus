@@ -7,6 +7,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const paging = require('../../utils/paging');
 const { buildUpdate } = require('../../utils/sql');
 const { audit } = require('../../utils/audit');
+const { notifyUsers } = require('../../utils/notify');
 
 const tempPassword = () => crypto.randomBytes(6).toString('base64url');
 
@@ -36,24 +37,28 @@ async function updateRow(conn, table, map, body, where, whereValue) {
 // ======================= STUDENTS =======================
 
 exports.listStudents = asyncHandler(async (req, res) => {
-  const { q, programId, sectionId, status } = req.query;
+  const { q, programId, sectionId, specializationId, semesterNo, status } = req.query;
   const { page, limit, offset } = paging(req.query);
   const where = ['1=1'];
   const params = [];
   if (q) { where.push('(u.full_name LIKE ? OR s.usn LIKE ? OR u.email LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (programId) { where.push('s.program_id = ?'); params.push(programId); }
   if (sectionId) { where.push('s.section_id = ?'); params.push(sectionId); }
+  if (specializationId) { where.push('sec.specialization_id = ?'); params.push(specializationId); }
+  if (semesterNo) { where.push('sec.semester_no = ?'); params.push(semesterNo); }
   if (status) { where.push('s.status = ?'); params.push(status); }
 
   const base = `FROM students s
     JOIN users u ON u.id = s.user_id
     JOIN programs p ON p.id = s.program_id
     JOIN sections sec ON sec.id = s.section_id
+    LEFT JOIN specializations sp ON sp.id = sec.specialization_id
     WHERE ${where.join(' AND ')}`;
   const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total ${base}`, params);
   const [rows] = await pool.query(
     `SELECT s.id, s.user_id, s.usn, s.status, u.full_name, u.email, u.phone,
-            p.code AS program_code, sec.id AS section_id, sec.name AS section_name, sec.semester_no
+            p.code AS program_code, sec.id AS section_id, sec.name AS section_name, sec.semester_no,
+            sec.specialization_id, sp.code AS specialization_code, sp.name AS specialization_name
      ${base} ORDER BY s.usn LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );
@@ -63,9 +68,11 @@ exports.listStudents = asyncHandler(async (req, res) => {
 exports.getStudent = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
     `SELECT s.*, u.full_name, u.email, u.phone, u.status AS account_status, u.last_login_at,
-            p.code AS program_code, sec.name AS section_name, sec.semester_no
+            p.code AS program_code, sec.name AS section_name, sec.semester_no,
+            sec.specialization_id, sp.code AS specialization_code, sp.name AS specialization_name
        FROM students s JOIN users u ON u.id = s.user_id
        JOIN programs p ON p.id = s.program_id JOIN sections sec ON sec.id = s.section_id
+       LEFT JOIN specializations sp ON sp.id = sec.specialization_id
       WHERE s.id = ?`,
     [req.params.id]
   );
@@ -123,6 +130,43 @@ exports.updateStudentStatus = asyncHandler(async (req, res) => {
   });
   await audit(req, 'STUDENT_STATUS_CHANGED', 'student', Number(req.params.id), { status: rows[0].status }, { status });
   res.json({ success: true, message: 'Student status updated' });
+});
+
+// Move one or many students to another section. Used for
+//   - the semester change (Sem 1 section -> Sem 2 section)
+//   - choosing the specialization in Sem 3 (Sem 2 section -> "Sem 3 WAD section A")
+exports.moveStudents = asyncHandler(async (req, res) => {
+  const { studentIds, sectionId } = req.body;
+  const ids = [...new Set(studentIds)];
+
+  const moved = await withTransaction(async (conn) => {
+    const [[section]] = await conn.query(
+      `SELECT sec.id, sec.program_id, sec.semester_no, sec.name, p.code AS program_code, sp.name AS specialization_name
+         FROM sections sec JOIN programs p ON p.id = sec.program_id
+         LEFT JOIN specializations sp ON sp.id = sec.specialization_id
+        WHERE sec.id = ?`,
+      [sectionId]
+    );
+    if (!section) throw new ApiError(400, 'Section does not exist');
+
+    const [students] = await conn.query('SELECT id, user_id, program_id FROM students WHERE id IN (?) FOR UPDATE', [ids]);
+    if (students.length !== ids.length) throw new ApiError(400, 'Some of the selected students were not found');
+    if (students.some((s) => s.program_id !== section.program_id)) {
+      throw new ApiError(400, 'All selected students must belong to the same program as the section');
+    }
+
+    await conn.query('UPDATE students SET section_id = ? WHERE id IN (?)', [sectionId, ids]);
+    await notifyUsers(conn, students.map((s) => s.user_id), {
+      type: 'system',
+      title: 'Your class has changed',
+      message: `You are now in ${section.program_code} Semester ${section.semester_no}${section.specialization_name ? ` - ${section.specialization_name}` : ''}, Section ${section.name}`,
+      entityType: 'section',
+      entityId: section.id,
+    });
+    return students.length;
+  });
+  await audit(req, 'STUDENTS_MOVED_TO_SECTION', 'section', sectionId, null, { studentIds: ids });
+  res.json({ success: true, data: { moved } });
 });
 
 // ======================= LECTURERS =======================

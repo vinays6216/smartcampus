@@ -83,12 +83,15 @@ smart-campus-backend/
 | POST | /students | create login + profile, returns temporaryPassword |
 | PUT | /students/:id | edit details |
 | PATCH | /students/:id/status | active, suspended, dropped, passed_out |
+| POST | /students/move-section | move students to another section: `studentIds[]`, `sectionId` (semester change, choosing a specialization) |
 | GET/GET/POST/PUT/PATCH | /lecturers, /lecturers/:id, /lecturers/:id/status | same for lecturers |
 | POST | /users/:userId/reset-password | new temporary password |
 | GET | /dashboard/counts | admin counts |
 
 ### Academic set-up  `/api/academic`  (GET: any user, write: admin)
-`/departments`, `/programs`, `/academic-years`, `/sections`, `/subjects` each support GET `/`, GET `/:id`, POST `/`, PUT `/:id`, DELETE `/:id`.
+`/departments`, `/programs`, `/specializations`, `/academic-years`, `/sections`, `/subjects` each support GET `/`, GET `/:id`, POST `/`, PUT `/:id`, DELETE `/:id`.
+
+Specialization rules (checked in `src/utils/specialization.js`): `programs.specializationStartSem` (MCA: 3). Sections from that semester need `specializationId`; earlier sections must not have one. A subject may have a `specializationId` (only from that semester) or none (common subject). A teaching assignment refuses a specialization subject for a section of another specialization.
 
 ### Teaching assignments  `/api/teaching`
 | Method | Path | Who | Purpose |

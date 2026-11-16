@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import FormModal from '../components/FormModal';
 import { Async, Badge, Empty, PageHeader } from '../components/ui';
 import { fmtDate, fmtTime } from '../utils/format';
-import { clean, errMsg, label, sectionLabel } from '../utils/helpers';
+import { clean, errMsg, label, sectionLabel, sectionShort } from '../utils/helpers';
 
 const EVENT_TYPES = ['extra_class', 'special_class', 'exam', 'holiday', 'event', 'other'].map((v) => ({ value: v, label: label(v) }));
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -28,7 +28,7 @@ export default function CalendarPage() {
   const classes = useFetch(() => (isStaff ? get(isAdmin ? '/academic/sections' : '/teaching') : Promise.resolve({ data: [] })), []);
   const sectionOptions = isAdmin
     ? (classes.data || []).map((s) => ({ value: s.id, label: sectionLabel(s) }))
-    : [...new Map((classes.data || []).map((t) => [t.sectionId, { value: t.sectionId, label: `${t.programCode} Sem ${t.semesterNo} Sec ${t.sectionName}` }])).values()];
+    : [...new Map((classes.data || []).map((t) => [t.sectionId, { value: t.sectionId, label: sectionShort(t) }])).values()];
 
   const events = f.data || [];
   const byDay = (day) => events.filter((e) => e.eventDate === `${from.slice(0, 8)}${pad(day)}`);

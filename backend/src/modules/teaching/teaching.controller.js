@@ -7,6 +7,8 @@ const SELECT = `
   SELECT ta.id, ta.lecturer_id, lu.full_name AS lecturer_name,
          ta.subject_id, sub.code AS subject_code, sub.name AS subject_name,
          ta.section_id, sec.name AS section_name, sec.semester_no,
+         sub.specialization_id AS subject_specialization_id,
+         sec.specialization_id, sp.code AS specialization_code, sp.name AS specialization_name,
          p.code AS program_code, ay.label AS academic_year,
          (SELECT COUNT(*) FROM students st WHERE st.section_id = ta.section_id AND st.status = 'active') AS student_count
     FROM teaching_assignments ta
@@ -15,7 +17,8 @@ const SELECT = `
     JOIN subjects sub  ON sub.id = ta.subject_id
     JOIN sections sec  ON sec.id = ta.section_id
     JOIN programs p    ON p.id = sec.program_id
-    JOIN academic_years ay ON ay.id = sec.academic_year_id`;
+    JOIN academic_years ay ON ay.id = sec.academic_year_id
+    LEFT JOIN specializations sp ON sp.id = sec.specialization_id`;
 
 // Admin: all (with filters). Lecturer: only his own classes.
 exports.list = asyncHandler(async (req, res) => {
@@ -40,11 +43,16 @@ exports.list = asyncHandler(async (req, res) => {
 
 exports.create = asyncHandler(async (req, res) => {
   const { lecturerId, subjectId, sectionId } = req.body;
-  const [[subject]] = await pool.query('SELECT program_id, semester_no FROM subjects WHERE id = ?', [subjectId]);
-  const [[section]] = await pool.query('SELECT program_id, semester_no FROM sections WHERE id = ?', [sectionId]);
+  const [[subject]] = await pool.query('SELECT program_id, semester_no, specialization_id FROM subjects WHERE id = ?', [subjectId]);
+  const [[section]] = await pool.query('SELECT program_id, semester_no, specialization_id FROM sections WHERE id = ?', [sectionId]);
   if (!subject || !section) throw new ApiError(400, 'Subject or section does not exist');
   if (subject.program_id !== section.program_id || subject.semester_no !== section.semester_no) {
     throw new ApiError(400, 'Subject and section must belong to the same program and semester');
+  }
+  // a specialization subject (e.g. a Data Science subject) can be taught only to a section of that specialization;
+  // a common subject (no specialization) can be taught to every section
+  if (subject.specialization_id !== null && subject.specialization_id !== section.specialization_id) {
+    throw new ApiError(400, 'This subject belongs to a different specialization than the selected section');
   }
   const [r] = await pool.query(
     'INSERT INTO teaching_assignments (lecturer_id, subject_id, section_id) VALUES (?, ?, ?)',

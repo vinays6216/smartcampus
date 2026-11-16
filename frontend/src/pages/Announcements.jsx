@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import FormModal from '../components/FormModal';
 import { Async, Badge, Empty, PageHeader } from '../components/ui';
 import { fmtDate, fmtDateTime, fmtTime } from '../utils/format';
-import { clean, errMsg, label, sectionLabel } from '../utils/helpers';
+import { clean, errMsg, label, sectionLabel, sectionShort } from '../utils/helpers';
 
 const EVENT_TYPES = ['extra_class', 'special_class', 'exam', 'holiday', 'event', 'other'].map((v) => ({ value: v, label: label(v) }));
 
@@ -27,7 +27,7 @@ export default function Announcements() {
 
   const sectionOptions = isAdmin
     ? (classes.data || []).map((s) => ({ value: s.id, label: sectionLabel(s) }))
-    : [...new Map((classes.data || []).map((t) => [t.sectionId, { value: t.sectionId, label: `${t.programCode} Sem ${t.semesterNo} Sec ${t.sectionName}` }])).values()];
+    : [...new Map((classes.data || []).map((t) => [t.sectionId, { value: t.sectionId, label: sectionShort(t) }])).values()];
   const subjectOptions = [...new Map((isAdmin ? [] : classes.data || []).map((t) => [t.subjectId, { value: t.subjectId, label: `${t.subjectCode} - ${t.subjectName}` }])).values()];
 
   const fields = [

@@ -62,8 +62,8 @@ smart-campus-frontend/
 | /announcements | all (staff post) | `/announcements` (GET, POST, DELETE) |
 | /calendar | all (staff add) | `/calendar` (GET, POST, DELETE) |
 | /notifications | all | `/notifications`, `/notifications/unread-count`, `/notifications/:id/read`, `/notifications/read-all` |
-| /students, /lecturers | admin | `/admin/students`, `/admin/lecturers`, `/admin/users/:userId/reset-password` |
-| /academic | admin | `/academic/departments`, `programs`, `academic-years`, `sections`, `subjects` |
+| /students, /lecturers | admin | `/admin/students`, `/admin/lecturers`, `/admin/users/:userId/reset-password`, `POST /admin/students/move-section` (tick students -> "Move selected") |
+| /academic | admin | `/academic/departments`, `programs`, `specializations`, `academic-years`, `sections`, `subjects` (the specialization field appears only from the program's specialization semester, MCA: 3) |
 | /teaching | admin | `/teaching` (GET, POST, DELETE) |
 
 ## Notes

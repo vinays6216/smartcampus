@@ -11,7 +11,7 @@ const SEMESTERS = Array.from({ length: 8 }, (_, i) => ({ value: i + 1, label: `S
 
 // One entry per backend resource: /api/academic/<path>
 //   columns: what the table shows.  fields: the create / edit form (names = request body keys).
-const buildConfig = (lookups) => ({
+const buildConfig = (lookups, needsSpec, specOptions) => ({
   departments: {
     title: 'Departments',
     columns: [['Code', (r) => r.code], ['Name', (r) => r.name]],
@@ -19,12 +19,24 @@ const buildConfig = (lookups) => ({
   },
   programs: {
     title: 'Programs',
-    columns: [['Code', (r) => r.code], ['Name', (r) => r.name], ['Department', (r) => r.departmentName], ['Semesters', (r) => r.durationSemesters]],
+    columns: [['Code', (r) => r.code], ['Name', (r) => r.name], ['Department', (r) => r.departmentName], ['Semesters', (r) => r.durationSemesters],
+      ['Specialization from sem', (r) => r.specializationStartSem ?? '-']],
     fields: [
       { name: 'departmentId', label: 'Department', type: 'select', required: true, options: lookups.departments },
       { name: 'code', label: 'Code (e.g. MCA)', required: true, half: true },
       { name: 'name', label: 'Name', required: true, half: true },
-      { name: 'durationSemesters', label: 'Number of semesters', type: 'number', min: 1, max: 12, default: 4 },
+      { name: 'durationSemesters', label: 'Number of semesters', type: 'number', min: 1, max: 12, default: 4, half: true },
+      { name: 'specializationStartSem', label: 'Specialization starts in semester', type: 'number', min: 1, max: 12, half: true,
+        hint: 'MCA: 3. Leave empty if the program has no specializations.' },
+    ],
+  },
+  specializations: {
+    title: 'Specializations',
+    columns: [['Program', (r) => r.programCode], ['Code', (r) => r.code], ['Name', (r) => r.name]],
+    fields: [
+      { name: 'programId', label: 'Program', type: 'select', required: true, options: lookups.programs },
+      { name: 'code', label: 'Code (e.g. WAD, DS, AIML)', required: true, half: true },
+      { name: 'name', label: 'Name', required: true, half: true },
     ],
   },
   'academic-years': {
@@ -40,18 +52,21 @@ const buildConfig = (lookups) => ({
   },
   sections: {
     title: 'Sections',
-    columns: [['Program', (r) => r.programCode], ['Year', (r) => r.academicYear], ['Semester', (r) => r.semesterNo], ['Section', (r) => r.name]],
+    columns: [['Program', (r) => r.programCode], ['Year', (r) => r.academicYear], ['Semester', (r) => r.semesterNo],
+      ['Specialization', (r) => r.specializationName || '-'], ['Section', (r) => r.name]],
     fields: [
       { name: 'programId', label: 'Program', type: 'select', required: true, options: lookups.programs },
       { name: 'academicYearId', label: 'Academic year', type: 'select', required: true, options: lookups.years },
       { name: 'semesterNo', label: 'Semester', type: 'select', required: true, half: true, options: SEMESTERS },
       { name: 'name', label: 'Section name (A, B...)', required: true, half: true },
+      { name: 'specializationId', label: 'Specialization', type: 'select', required: true, options: specOptions, show: needsSpec,
+        placeholder: 'Select specialization', hint: 'From the specialization semester (MCA: Sem 3) every section belongs to one specialization.' },
     ],
   },
   subjects: {
     title: 'Subjects',
     columns: [['Code', (r) => r.code], ['Name', (r) => r.name], ['Program', (r) => r.programCode], ['Sem', (r) => r.semesterNo],
-      ['Credits', (r) => r.credits], ['Type', (r) => r.subjectType]],
+      ['Specialization', (r) => r.specializationName || 'Common'], ['Credits', (r) => r.credits], ['Type', (r) => r.subjectType]],
     fields: [
       { name: 'programId', label: 'Program', type: 'select', required: true, options: lookups.programs },
       { name: 'code', label: 'Subject code', required: true, half: true },
@@ -60,6 +75,8 @@ const buildConfig = (lookups) => ({
       { name: 'credits', label: 'Credits', type: 'number', min: 0, max: 10, default: 3, half: true },
       { name: 'subjectType', label: 'Type', type: 'select', default: 'theory', half: true,
         options: ['theory', 'lab', 'elective', 'project'].map((v) => ({ value: v, label: v })) },
+      { name: 'specializationId', label: 'Specialization', type: 'select', options: specOptions, show: needsSpec,
+        placeholder: 'Common to all specializations', hint: 'Choose a specialization only for subjects taught to that specialization alone.' },
     ],
   },
 });
@@ -72,26 +89,40 @@ export default function Academic() {
   // dropdown data used by the forms
   const departments = useFetch(() => get('/academic/departments'), []);
   const programs = useFetch(() => get('/academic/programs'), []);
+  const specs = useFetch(() => get('/academic/specializations'), []);
   const years = useFetch(() => get('/academic/academic-years'), []);
   const lookups = {
     departments: (departments.data || []).map((d) => ({ value: d.id, label: d.name })),
     programs: (programs.data || []).map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` })),
     years: (years.data || []).map((y) => ({ value: y.id, label: y.label })),
   };
-  const config = buildConfig(lookups);
+
+  // The specialization field is shown only when the chosen program has specializations
+  // and the chosen semester is at or after the semester they start in (MCA: Sem 3).
+  const startSemOf = (programId) => (programs.data || []).find((p) => String(p.id) === String(programId))?.specializationStartSem ?? null;
+  const needsSpec = (v) => {
+    const start = startSemOf(v.programId);
+    return start !== null && Number(v.semesterNo) >= start;
+  };
+  const specOptions = (v) => (specs.data || [])
+    .filter((s) => String(s.programId) === String(v.programId))
+    .map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
+
+  const config = buildConfig(lookups, needsSpec, specOptions);
   const cfg = config[tab];
 
   const f = useFetch(() => get(`/academic/${tab}`), [tab]);
 
   const save = async (v) => {
     const body = clean(v);
+    if ((tab === 'sections' || tab === 'subjects') && !needsSpec(v)) delete body.specializationId;
     if (form.row) await put(`/academic/${tab}/${form.row.id}`, body);
     else await post(`/academic/${tab}`, body);
     toast.success('Saved');
     setForm(null);
     f.reload();
     // refresh dropdown sources after changing them
-    departments.reload(); programs.reload(); years.reload();
+    departments.reload(); programs.reload(); specs.reload(); years.reload();
   };
 
   const remove = async (row) => {
@@ -103,9 +134,14 @@ export default function Academic() {
 
   return (
     <>
-      <PageHeader title="Academic Setup" subtitle="Departments, programs, years, sections and subjects. Set these up before adding students.">
+      <PageHeader title="Academic Setup" subtitle="Departments, programs, specializations, years, sections and subjects. Set these up before adding students.">
         <button className="btn btn-primary" onClick={() => setForm({ row: null })}>+ Add</button>
       </PageHeader>
+
+      <div className="alert alert-info">
+        <strong>MCA set-up order:</strong> program (specialization starts in semester 3) &rarr; its specializations (WAD, DS, AIML) &rarr; academic year &rarr;
+        sections (Sem 1-2 common, Sem 3-4 one per specialization) &rarr; subjects (common, or tied to a specialization).
+      </div>
 
       <Tabs active={tab} onChange={setTab} items={Object.entries(config).map(([key, c]) => ({ key, label: c.title }))} />
 
