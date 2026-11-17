@@ -27,5 +27,7 @@ module.exports = {
   uploadDir: path.resolve(process.env.UPLOAD_DIR || 'uploads'),
   attendanceIssueWindowDays: Number(process.env.ATTENDANCE_ISSUE_WINDOW_DAYS) || 7,
   attendanceMinPercent: Number(process.env.ATTENDANCE_MIN_PERCENT) || 75,
+  // lecturers may change or delete a class's attendance for this many days after the class (0 = no limit); admins always
+  attendanceEditWindowDays: process.env.ATTENDANCE_EDIT_WINDOW_DAYS === undefined ? 30 : Number(process.env.ATTENDANCE_EDIT_WINDOW_DAYS),
   bcryptRounds: 10,
 };

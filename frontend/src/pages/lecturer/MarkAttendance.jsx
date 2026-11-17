@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { get, post, put } from '../../api/client';
+import { del, get, post, put } from '../../api/client';
 import useFetch from '../../hooks/useFetch';
 import { useToast } from '../../context/ToastContext';
 import { Async, Badge, Empty, PageHeader } from '../../components/ui';
@@ -78,6 +78,18 @@ export default function MarkAttendance() {
       })));
       toast.success(`Copied marks from ${fmtDate(prev.sessionDate)}, period ${prev.periodNo}. Check and save.`);
     } catch (e) { toast.error(errMsg(e)); } finally { setCopying(false); }
+  };
+
+  const deleteSession = async (s) => {
+    const why = window.prompt(`Delete the class of ${fmtDate(s.sessionDate)}, period ${s.periodNo}? All its marks are removed.\n\nReason (required):`);
+    if (why === null) return;
+    if (why.trim().length < 3) { toast.error('Please give a reason (at least 3 characters)'); return; }
+    try {
+      await del(`/attendance/sessions/${s.id}`, { reason: why.trim() });
+      toast.success('Class deleted');
+      sessions.reload();
+      roster.reload();
+    } catch (e) { toast.error(errMsg(e)); }
   };
 
   const counts = STATUSES.map((s) => [s, Object.values(marks).filter((m) => m.status === s).length]);
@@ -205,7 +217,12 @@ export default function MarkAttendance() {
                 {sessions.data.map((s) => (
                   <tr key={s.id}>
                     <td>{fmtDate(s.sessionDate)}</td><td>{s.periodNo}</td><td>{s.topic || '-'}</td><td>{s.presentCount}</td><td>{s.absentCount}</td>
-                    <td><button className="btn btn-sm" onClick={() => { setDate(s.sessionDate); setPeriod(s.periodNo); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Open</button></td>
+                    <td>
+                      <div className="btn-group">
+                        <button className="btn btn-sm" onClick={() => { setDate(s.sessionDate); setPeriod(s.periodNo); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Open</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => deleteSession(s)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

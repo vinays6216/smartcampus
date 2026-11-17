@@ -7,6 +7,7 @@ const { assertTeaches } = require('../../utils/ownership');
 const { saveFileRecord } = require('../../utils/files');
 const { notifyUsers } = require('../../utils/notify');
 const { attendanceRule, RULE_SQL, summarize } = require('../../utils/attendanceRule');
+const { audit } = require('../../utils/audit');
 
 // =====================================================================
 //  STUDENT
@@ -236,11 +237,24 @@ exports.listSessions = asyncHandler(async (req, res) => {
   res.json({ success: true, data: rows });
 });
 
+// Who may change a saved class: the lecturer of the class within the edit window, or an admin (reason required).
+async function assertCanChange(user, session, reason) {
+  await assertTeaches(user, session.teaching_assignment_id);
+  if (user.role === 'admin') {
+    if (!reason) throw new ApiError(400, 'Admins must give a reason for changing attendance');
+    return;
+  }
+  const days = env.attendanceEditWindowDays;
+  if (days > 0) {
+    const age = Math.round((Date.parse(todayLocal()) - Date.parse(String(session.session_date).slice(0, 10))) / 86400000);
+    if (age > days) throw new ApiError(403, `Classes older than ${days} days can only be changed by an admin`);
+  }
+}
+
 // Edit marks of a session. The DB trigger writes every status change into attendance_record_history.
 exports.updateRecords = asyncHandler(async (req, res) => {
-  if (req.user.role !== 'lecturer') throw new ApiError(403, 'Only lecturers can edit attendance');
   const session = await getSessionOrFail(req.params.id);
-  await assertTeaches(req.user, session.teaching_assignment_id);
+  await assertCanChange(req.user, session, req.body.reason);
 
   await withTransaction(async (conn) => {
     await conn.query('SET @app_user_id = ?, @change_reason = ?', [req.user.id, req.body.reason || null]);
@@ -257,6 +271,29 @@ exports.updateRecords = asyncHandler(async (req, res) => {
     }
   });
   res.json({ success: true, message: 'Attendance updated' });
+});
+
+// Delete a class marked by mistake. Records, issues and history of that class go with it (FK cascade),
+// so a full snapshot is written to audit_logs first. Not allowed while a student's issue is still open.
+exports.deleteSession = asyncHandler(async (req, res) => {
+  const session = await getSessionOrFail(req.params.id);
+  await assertCanChange(req.user, session, req.body.reason);
+  const snapshot = await withTransaction(async (conn) => {
+    const [[open]] = await conn.query(
+      `SELECT COUNT(*) AS n FROM attendance_issues ai JOIN attendance_records ar ON ar.id = ai.attendance_record_id
+        WHERE ar.session_id = ? AND ai.status = 'open'`,
+      [session.id]
+    );
+    if (open.n) throw new ApiError(409, 'A student has an open attendance issue for this class; decide it first');
+    const [records] = await conn.query('SELECT student_id, status, remarks FROM attendance_records WHERE session_id = ?', [session.id]);
+    await conn.query('DELETE FROM attendance_sessions WHERE id = ?', [session.id]);
+    return {
+      teaching_assignment_id: session.teaching_assignment_id, subject_code: session.subject_code, section_name: session.section_name,
+      session_date: session.session_date, period_no: session.period_no, topic: session.topic, reason: req.body.reason, records,
+    };
+  });
+  await audit(req, 'ATTENDANCE_SESSION_DELETED', 'attendance_session', session.id, snapshot, null);
+  res.json({ success: true, message: 'Class deleted' });
 });
 
 // Percentage report between two dates; ?below=75 lists only students under 75%
@@ -341,7 +378,12 @@ exports.register = asyncHandler(async (req, res) => {
       ...summarize(statuses),
     };
   });
-  res.json({ success: true, data: { from, to, sessions, students: rows }, rule: attendanceRule() });
+  res.json({
+    success: true,
+    data: { from, to, sessions, students: rows },
+    rule: attendanceRule(),
+    editing: { windowDays: env.attendanceEditWindowDays, reasonRequired: req.user.role === 'admin' },
+  });
 });
 
 // Marks of the most recent class of this teaching assignment before a date/period, so the lecturer can copy them.

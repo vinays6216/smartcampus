@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { get, post } from '../../api/client';
+import { del, get, post, put } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import useFetch from '../../hooks/useFetch';
-import { Empty, PageHeader, PercentBar, Spinner } from '../../components/ui';
+import FormModal from '../../components/FormModal';
+import { Badge, Empty, PageHeader, PercentBar, Spinner } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 import { today } from '../../utils/format';
 import { classLabel, downloadCsv, errMsg } from '../../utils/helpers';
 
@@ -11,6 +13,7 @@ const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); retur
 // Lecturer + admin: attendance percentage between two dates, optionally only students below a given %
 export default function AttendanceReport() {
   const toast = useToast();
+  const { user } = useAuth();
   const classes = useFetch(() => get('/teaching'), []);
   const [form, setForm] = useState({ teachingAssignmentId: '', from: daysAgo(30), to: today(), below: '' });
   const [rows, setRows] = useState(null);
@@ -38,11 +41,34 @@ export default function AttendanceReport() {
   // day-wise register (student x class) for the chosen class and dates
   const [regLoading, setRegLoading] = useState(false);
   const SHORT = { present: 'P', absent: 'A', late: 'L', excused: 'E' };
+  const [register, setRegister] = useState(null); // { data, rule, editing } shown below the report
+  const [cellEdit, setCellEdit] = useState(null); // { session, student, status }
+  const loadRegister = () => get('/attendance/register', { teachingAssignmentId: form.teachingAssignmentId, from: form.from, to: form.to });
+  const showRegister = async () => {
+    if (!form.teachingAssignmentId) { toast.error('Select a class first'); return; }
+    setRegLoading(true);
+    try { setRegister(await loadRegister()); } catch (err) { toast.error(errMsg(err)); } finally { setRegLoading(false); }
+  };
+  const reasonRequired = !!register?.editing?.reasonRequired;
+  const saveCell = async (v) => {
+    await put(`/attendance/sessions/${cellEdit.session.id}/records`, {
+      records: [{ studentId: cellEdit.student.studentId, status: v.status }], ...(v.reason ? { reason: v.reason } : {}),
+    });
+    toast.success(`${cellEdit.student.usn}: ${cellEdit.session.sessionDate} P${cellEdit.session.periodNo} is now ${v.status}`);
+    setCellEdit(null);
+    setRegister(await loadRegister());
+  };
+  const deleteClass = async (ses) => {
+    const why = window.prompt(`Delete the class of ${ses.sessionDate}, period ${ses.periodNo}? All its marks are removed.\n\nReason (required):`);
+    if (why === null) return;
+    if (why.trim().length < 3) { toast.error('Please give a reason (at least 3 characters)'); return; }
+    try { await del(`/attendance/sessions/${ses.id}`, { reason: why.trim() }); toast.success('Class deleted'); setRegister(await loadRegister()); } catch (err) { toast.error(errMsg(err)); }
+  };
   const downloadRegister = async () => {
     if (!form.teachingAssignmentId) { toast.error('Select a class first'); return; }
     setRegLoading(true);
     try {
-      const body = await get('/attendance/register', { teachingAssignmentId: form.teachingAssignmentId, from: form.from, to: form.to });
+      const body = await loadRegister();
       const { sessions, students } = body.data;
       if (!sessions.length) { toast.error('No classes were marked between these dates'); return; }
       const cls = (classes.data || []).find((t) => String(t.id) === String(form.teachingAssignmentId));
@@ -89,6 +115,7 @@ export default function AttendanceReport() {
         <div><label>Only below % (optional)</label><input type="number" min={0} max={100} placeholder="e.g. 75" value={form.below} onChange={set('below')} /></div>
         <div className="btn-group">
           <button className="btn btn-primary" disabled={loading}>Show report</button>
+          <button type="button" className="btn" disabled={regLoading} onClick={showRegister}>View / edit register</button>
           <button type="button" className="btn" disabled={regLoading} onClick={downloadRegister}>{regLoading ? 'Preparing...' : 'Download register (CSV)'}</button>
         </div>
       </form>
@@ -123,6 +150,60 @@ export default function AttendanceReport() {
           )}
         </div>
       )}
+
+      {register && (
+        <div className="card">
+          <div className="row" style={{ marginBottom: '.6rem' }}>
+            <h2 style={{ margin: 0 }}>Register {register.data.from} to {register.data.to}</h2>
+            <button className="btn btn-sm" onClick={() => setRegister(null)}>Close</button>
+          </div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Click a mark to change it{reasonRequired ? ' (admins must give a reason)' : ''}. Every change is logged in the Corrections Log.
+            {user.role === 'lecturer' && register.editing?.windowDays > 0 && ` Lecturers can change classes up to ${register.editing.windowDays} days old; older ones need an admin.`}
+          </p>
+          {!register.data.sessions.length && <Empty>No classes were marked between these dates.</Empty>}
+          {!!register.data.sessions.length && (
+            <div className="table-wrap">
+              <table className="register">
+                <thead>
+                  <tr>
+                    <th>USN</th><th>Name</th>
+                    {register.data.sessions.map((s) => (
+                      <th key={s.id} title={s.topic || ''}>
+                        {s.sessionDate.slice(5)}<br />P{s.periodNo}
+                        <button className="btn-icon" title="Delete this class" onClick={() => deleteClass(s)}>✕</button>
+                      </th>
+                    ))}
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {register.data.students.map((r) => (
+                    <tr key={r.studentId} className={r.attendancePercentage !== null && r.attendancePercentage < minimum ? 'row-low' : ''}>
+                      <td>{r.usn}</td><td>{r.fullName}</td>
+                      {r.statuses.map((st, i) => (
+                        <td key={register.data.sessions[i].id}>
+                          {st
+                            ? <button className="btn-cell" onClick={() => setCellEdit({ session: register.data.sessions[i], student: r, status: st })}><Badge value={st}>{SHORT[st]}</Badge></button>
+                            : <span className="muted">-</span>}
+                        </td>
+                      ))}
+                      <td>{r.attendancePercentage ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <FormModal open={!!cellEdit} title={cellEdit ? `${cellEdit.student.fullName} — ${cellEdit.session.sessionDate}, period ${cellEdit.session.periodNo}` : ''}
+        initial={{ status: cellEdit?.status }} submitLabel="Save change" onSubmit={saveCell} onClose={() => setCellEdit(null)}
+        fields={[
+          { name: 'status', label: 'Status', type: 'select', required: true, options: ['present', 'absent', 'late', 'excused'].map((x) => ({ value: x, label: x })) },
+          { name: 'reason', label: reasonRequired ? 'Reason' : 'Reason (optional)', required: reasonRequired, placeholder: 'e.g. Marked wrongly' },
+        ]} />
     </>
   );
 }
