@@ -95,11 +95,23 @@ smart-campus-backend/
 | PUT | /admins/:id/permissions | replace permissions (permissions[], isPlatformAdmin) |
 | PATCH | /admins/:id/status | active / inactive (takes effect at once) |
 | POST | /admins/:id/reset-password | new temporary password |
+| GET | /activity | activity log from audit_logs (from, to, action, q, page, limit) + list of actions |
 
 Admin routes check the admin's permission for that area on every request (`adminCan(area)` in `middleware/auth.js`);
 platform admins have all. You cannot remove your own platform rights or deactivate yourself, and at least one active
 platform admin must remain. `/auth/login` and `/auth/me` return `isPlatformAdmin` and `permissions` for the menu.
 Without migration 002 every admin keeps full rights and `/platform` answers 503.
+
+### Leave requests  `/api/leave`
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| POST | / | student | multipart: fromDate, toDate, leaveType (medical/personal/event/other), reason, optional file `proof`; no overlap with an open/approved leave; start ≤ 30 days ago, end ≤ 90 days ahead |
+| GET | /mine | student | own requests with decision |
+| PATCH | /:id/withdraw | student | withdraw an open request |
+| GET | / | lecturer (students of sections they teach), admin (attendance permission) | `?status=open|approved|rejected|withdrawn` |
+| PATCH | /:id/decide | lecturer, admin | `{ decision: approve|reject, remarks }`; approve turns the student's absent marks in the range into excused (logged as "Leave #N approved"); classes marked later in the range start as excused |
+
+Without `database/migrations/003_leave_requests.sql` these routes answer 503 and marking works as before.
 
 ### Academic set-up  `/api/academic`  (GET: any user, write: admin)
 `/departments`, `/programs`, `/specializations`, `/academic-years`, `/sections`, `/subjects` each support GET `/`, GET `/:id`, POST `/`, PUT `/:id`, DELETE `/:id`.

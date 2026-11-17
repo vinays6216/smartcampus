@@ -54,13 +54,15 @@ Run it as the MySQL root user (MySQL Workbench: File → Open SQL Script → run
 mysql -u root -p < database/schema.sql
 mysql -u root -p < database/migrations/001_timetable_slots.sql
 mysql -u root -p < database/migrations/002_admin_permissions.sql
+mysql -u root -p < database/migrations/003_leave_requests.sql
 ```
 
 `database/migrations/` holds additions made after the original schema (run each file once, in order; they are safe to run again).
 `001_timetable_slots.sql` adds the weekly timetable grid. `002_admin_permissions.sql` adds the platform admin and per-admin
 permissions: the starter admin `admin@smartcampus.local` becomes the platform admin, other existing admins keep full rights.
 The platform admin (menu **Platform Admins**) creates admins and ticks what each may use: students & lecturers, academic
-setup, timetables, attendance, announcements & calendar, assignments & materials. Locked out? `npm run create-admin -- --email <admin> --platform`. Existing databases only need the migration files.
+setup, timetables, attendance, announcements & calendar, assignments & materials. Locked out? `npm run create-admin -- --email <admin> --platform`.
+`003_leave_requests.sql` adds student leave requests (approval turns absent marks on those days into excused). Existing databases only need the migration files.
 
 Then, still as root, turn on the event scheduler (deadline reminders) and create a limited account for the app:
 

@@ -244,6 +244,54 @@ ok('B after the decision the lecturer can delete it', (await call('PATCH', `/att
 ok('B student summary for yesterday is empty again', (await call('GET', `/attendance/student/summary?from=${yesterday}&to=${yesterday}`, st)).data?.subjects?.length === 0);
 ok('B student cannot delete (403)', (await call('DELETE', `/attendance/sessions/${s1.data.sessionId}`, st, { reason: 'nope' })).status === 403);
 
+results.push('--- F1 classes needed');
+// today: P1 late, P2 late, P3 excused, P4 absent -> 2 of 3 held -> one more class reaches 75%
+const f1 = await call('GET', `/attendance/student/summary?from=${today}&to=${today}`, st);
+ok('F1 subject: attend 1 more to reach 75%', f1.data?.subjects?.[0]?.classesToReach === 1 && f1.data.subjects[0].canMiss === 0, JSON.stringify(f1.data?.subjects?.[0]));
+ok('F1 overall margin', f1.data?.overall?.toReach === 1, JSON.stringify(f1.data?.overall));
+
+results.push('--- F2 leave requests');
+const lf = (from, to, type = 'medical', reason = 'Fever, doctor note attached') => { const f = new FormData(); f.append('fromDate', from); f.append('toDate', to); f.append('leaveType', type); f.append('reason', reason); return f; };
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+const lv = lf(today, today); lv.append('proof', pdf(), 'note.pdf');
+const leave1 = await call('POST', '/leave', st, null, lv);
+ok('F2 student asks for leave (with proof)', leave1.status === 201);
+ok('F2 overlapping leave (409)', (await call('POST', '/leave', st, null, lf(today, today))).status === 409);
+ok('F2 inverted dates (400)', (await call('POST', '/leave', st, null, lf(today, yesterday))).status === 400);
+ok('F2 too far in the past (400)', (await call('POST', '/leave', st, null, lf(daysAgo(60), daysAgo(59)))).status === 400);
+ok('F2 lecturers notified', ((await call('GET', '/notifications', lt)).data || []).some((n) => n.title === 'New leave request'));
+const openL = await call('GET', '/leave?status=open', lt);
+ok('F2 lecturer sees the open request', openL.data?.length === 1 && openL.data[0].usn === 'USN001' && !!openL.data[0].proofFileId);
+ok('F2 lecturer can open the proof file', (await fetch(`${API}/files/${openL.data[0].proofFileId}`, { headers: { Authorization: `Bearer ${lt}` } })).status === 200);
+ok('F2 student cannot list staff view (403)', (await call('GET', '/leave', st)).status === 403);
+const appr = await call('PATCH', `/leave/${leave1.data.id}/decide`, lt, { decision: 'approve', remarks: 'Get well soon' });
+ok('F2 approve -> today\'s absent mark excused', appr.status === 200 && appr.data?.excused === 1, JSON.stringify(appr));
+ok('F2 decided twice (409)', (await call('PATCH', `/leave/${leave1.data.id}/decide`, lt, { decision: 'reject' })).status === 409);
+const f2sum = await call('GET', `/attendance/student/summary?from=${today}&to=${today}`, st);
+ok('F2 student % now 100 (excused not counted)', Number(f2sum.data?.subjects?.[0]?.attendancePercentage) === 100, JSON.stringify(f2sum.data?.subjects?.[0]));
+ok('F2 correction logged with leave reason', ((await call('GET', '/attendance/corrections', lt)).data || []).some((c) => c.newStatus === 'excused' && c.reason === `Leave #${leave1.data.id} approved`));
+const s6 = await call('POST', '/attendance/sessions', lt, { teachingAssignmentId: ta.data.id, sessionDate: today, periodNo: 6 });
+const s6rec = (await call('GET', `/attendance/sessions/${s6.data?.sessionId}`, lt)).data?.records?.[0];
+ok('F2 class marked during leave starts as excused', s6rec?.status === 'excused' && /On leave/.test(s6rec.remarks || ''), JSON.stringify(s6rec));
+ok('F2 student told about the decision', ((await call('GET', '/notifications', st)).data || []).some((n) => n.title === 'Leave approved'));
+const mineL = (await call('GET', '/leave/mine', st)).data?.[0];
+ok('F2 student sees approved + who decided', mineL?.status === 'approved' && mineL.decidedByName === 'Test Lecturer' && mineL.excusedCount === 1);
+const leave2 = await call('POST', '/leave', st, null, lf(daysAgo(3), daysAgo(2), 'personal', 'Family function'));
+ok('F2 reject with remarks', (await call('PATCH', `/leave/${leave2.data.id}/decide`, admin, { decision: 'reject', remarks: 'No proof' })).status === 200);
+const leave3 = await call('POST', '/leave', st, null, lf(daysAgo(10), daysAgo(10), 'event', 'Inter-college fest'));
+ok('F2 student withdraws open request', (await call('PATCH', `/leave/${leave3.data.id}/withdraw`, st)).status === 200
+  && (await call('PATCH', `/leave/${leave3.data.id}/withdraw`, st)).status === 404);
+await call('DELETE', `/attendance/sessions/${s6.data.sessionId}`, lt, { reason: 'Test class removed' });
+
+results.push('--- F3 activity log');
+const act = await call('GET', '/platform/activity', admin);
+ok('F3 activity lists actions with who did them', act.status === 200 && act.data?.length > 0 && act.actions?.includes('LEAVE_APPROVED') && act.actions.includes('ADMIN_CREATED'), JSON.stringify(act.actions));
+const actL = await call('GET', '/platform/activity?action=LEAVE_APPROVED', admin);
+ok('F3 filter by action', actL.data?.length === 1 && actL.data[0].userName === 'Test Lecturer' && actL.data[0].newValues?.excused === 1, JSON.stringify(actL.data?.[0]));
+ok('F3 search by text', ((await call('GET', '/platform/activity?q=ATTENDANCE_SESSION', admin)).data || []).every((r) => r.action.includes('ATTENDANCE_SESSION')));
+ok('F3 paging', (await call('GET', '/platform/activity?limit=2&page=1', admin)).data?.length === 2 && (await call('GET', '/platform/activity?limit=2', admin)).pagination?.total >= 5);
+ok('F3 lecturer cannot read (403)', (await call('GET', '/platform/activity', lt)).status === 403);
+
 results.push('--- P3 calendar edit, upcoming, scheduled announcements');
 const evs = (await call('GET', '/calendar', lt)).data || [];
 const lecEvent = evs.find((e) => e.createdBy && e.title === 'Extra class');
