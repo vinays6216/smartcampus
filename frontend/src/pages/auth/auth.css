@@ -1,76 +1,56 @@
-/* Sign-in pages — same layout and palette as CampusPulse. Uses the tokens in theme-pulse.css. */
+/* Sign-in pages: one centred card on a soft background. Uses the tokens in theme.css. */
 .au-page {
+  position: relative;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(320px, 5fr) 7fr;
-  background: var(--cp-page);
-  color: var(--cp-text);
-  font-family: var(--cp-font);
+  place-items: center;
+  padding: 40px 16px;
+  font-family: var(--sc-font);
+  color: var(--sc-text);
+  background:
+    radial-gradient(600px 300px at 50% 0%, var(--sc-brand-soft), transparent 70%),
+    var(--sc-bg);
 }
+.au-top { position: absolute; top: 16px; right: 16px; }
 
-.au-brand-panel {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 32px;
-  padding: 40px;
-  color: #fff;
-  background: linear-gradient(160deg, var(--cp-accent) 0%, #1e1b4b 100%);
-}
-.au-brand-panel h1 { font-size: 30px; line-height: 1.25; margin: 0 0 28px; font-weight: 700; color: #fff; }
-
-.au-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.au-center { width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center; }
 .au-logo {
-  display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.16);
+  display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--sc-brand); color: var(--sc-on-brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--sc-brand) 35%, transparent);
 }
-.au-brand-mobile { display: none; color: var(--cp-text); margin-bottom: 24px; }
-.au-brand-mobile .au-logo { background: var(--cp-accent); color: #fff; }
+.au-name { margin: 12px 0 20px; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
 
-.au-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
-.au-features li { display: flex; gap: 12px; align-items: flex-start; }
-.au-features strong { display: block; font-size: 15px; }
-.au-features small { opacity: 0.8; font-size: 13px; }
-.au-feature-icon {
-  display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px;
-  background: rgba(255, 255, 255, 0.14);
-}
-.au-muted-light { opacity: 0.7; font-size: 12px; }
-
-.au-form-side { display: grid; place-items: center; padding: 32px 16px; }
 .au-card {
-  width: 100%; max-width: 420px; padding: 32px;
-  background: var(--cp-card); border: 1px solid var(--cp-border); border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+  width: 100%; padding: 28px;
+  background: var(--sc-surface); border: 1px solid var(--sc-border); border-radius: 18px; box-shadow: var(--sc-shadow);
 }
-.au-card h2 { margin: 4px 0 6px; font-size: 22px; color: var(--cp-text); }
-.au-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cp-accent); }
-.au-description { margin: 0 0 20px; color: var(--cp-text-muted); font-size: 14px; }
+.au-card h1 { margin: 0 0 4px; font-size: 20px; text-align: center; }
+.au-description { margin: 0 0 20px; color: var(--sc-muted); font-size: 14px; text-align: center; }
 
 .au-form { display: grid; gap: 14px; }
 .au-form .field { margin: 0; }
-.au-form .field label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--cp-text-2); }
-.au-form input { width: 100%; }
-.au-form .btn { width: 100%; justify-content: center; margin-top: 6px; height: 40px; }
+.au-form .field label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--sc-text-2); }
+.au-form input { width: 100%; min-height: 42px; }
+.au-form .btn { width: 100%; justify-content: center; height: 42px; margin-top: 4px; }
 .au-form .alert { margin: 0; }
 
 .au-password { position: relative; display: block; }
-.au-password input { width: 100%; padding-right: 40px; }
+.au-password input { width: 100%; padding-right: 42px; }
 .au-password button {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  display: inline-grid; place-items: center; width: 30px; height: 30px;
-  border: 0; border-radius: 6px; background: transparent; color: var(--cp-text-muted); cursor: pointer;
+  display: inline-grid; place-items: center; width: 32px; height: 32px;
+  border: 0; border-radius: 50%; background: transparent; color: var(--sc-muted); cursor: pointer;
 }
-.au-password button:hover { background: var(--cp-accent-tint); }
+.au-password button:hover { background: var(--sc-brand-soft); color: var(--sc-brand); }
 
-.au-row { display: flex; justify-content: flex-end; margin-top: -4px; }
-.au-footer { margin-top: 20px; text-align: center; font-size: 14px; color: var(--cp-text-muted); }
-.au-link { color: var(--cp-accent); font-weight: 600; text-decoration: none; font-size: 13px; }
+.au-row { display: flex; justify-content: flex-end; margin-top: -6px; }
+.au-link { color: var(--sc-brand); font-weight: 600; text-decoration: none; font-size: 13px; }
 .au-link:hover { text-decoration: underline; }
+.au-footer { margin-top: 16px; font-size: 14px; color: var(--sc-muted); text-align: center; }
 
-@media (max-width: 860px) {
-  .au-page { grid-template-columns: 1fr; }
-  .au-brand-panel { display: none; }
-  .au-brand-mobile { display: flex; }
-  .au-card { padding: 24px 20px; }
+.au-features { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.au-features li {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+  background: var(--sc-surface); border: 1px solid var(--sc-border); color: var(--sc-text-2); font-size: 12px; font-weight: 500;
 }
+.au-features svg { color: var(--sc-brand); }

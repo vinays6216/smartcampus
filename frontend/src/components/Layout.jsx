@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { get } from '../api/client';
+import ThemeToggle from './ThemeToggle';
 
 // Grouped menus, CampusPulse style. Item: [path, Icon, label, admin permission needed ('platform' = platform admins only)]
 const MENUS = {
@@ -116,6 +117,7 @@ export default function Layout() {
               : <strong>{EXTRA_TITLES[location.pathname] || 'Smart Campus'}</strong>}
           </div>
           <div className="spacer" />
+          <ThemeToggle />
           <Link to="/notifications" className="bell" title="Notifications" aria-label="Notifications">
             <Bell size={18} />{unread > 0 && <span className="bell-count">{unread}</span>}
           </Link>

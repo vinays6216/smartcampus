@@ -19,7 +19,7 @@ export default function ForgotPassword() {
   };
 
   return (
-    <AuthLayout eyebrow="Account help" title="Forgot password" description="We will send a reset link to your email."
+    <AuthLayout title="Forgot password" description="We will send a reset link to your email."
       footer={<Link className="au-link" to="/login">Back to sign in</Link>}>
       <form className="au-form" onSubmit={submit}>
         {message && <div className="alert alert-info">{message}</div>}

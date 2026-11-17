@@ -31,10 +31,9 @@ export default function Login() {
 
   return (
     <AuthLayout
-      eyebrow="Welcome back"
-      title="Sign in"
-      description="Use the account your college gave you."
-      footer={<>Students, lecturers and admins sign in here.</>}
+      title="Welcome back"
+      description="Sign in with the account your college gave you."
+      footer={<>Students, lecturers and admins all sign in here.</>}
     >
       <form className="au-form" onSubmit={submit}>
         {error && <div className="alert alert-error">{error}</div>}
