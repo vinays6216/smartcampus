@@ -247,3 +247,26 @@ tbody tr.row-low, tbody tr.row-low:hover { background: var(--sc-err-bg); }
 
 /* activity log details */
 .log-json { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--sc-surface-2); color: var(--sc-text-2); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
+
+/* dashboard: Today panel */
+.today-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; margin-bottom: 16px; }
+.today-grid > .card, .today-side .card { margin-bottom: 0; }
+.today-side { display: grid; gap: 16px; align-content: start; }
+.card h2 svg { vertical-align: -3px; margin-right: 6px; color: var(--sc-brand); }
+.today-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--sc-border); }
+.today-row:last-child { border-bottom: 0; }
+.today-row.done { opacity: .6; }
+.today-row.live { background: var(--sc-brand-soft); border-radius: 10px; padding-left: 8px; padding-right: 8px; opacity: 1; }
+.today-time { font-weight: 700; font-size: 14px; line-height: 1.2; }
+.today-time span { display: block; font-weight: 500; font-size: 12px; color: var(--sc-muted); }
+.today-state { display: flex; align-items: center; gap: 8px; }
+.live-dot { font-size: 12px; font-weight: 700; color: var(--sc-brand); }
+.live-dot::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--sc-brand); animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.next-deadline { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; background: var(--sc-surface-2); text-decoration: none; color: var(--sc-text); }
+.next-deadline:hover { background: var(--sc-brand-soft); }
+.deadline-left { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--sc-warn); }
+.warn-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--sc-border); text-decoration: none; color: var(--sc-text); font-size: 14px; }
+.warn-row:last-child { border-bottom: 0; }
+.text-green svg, .text-red svg { vertical-align: -2px; }
+@media (max-width: 900px) { .today-grid { grid-template-columns: 1fr; } }
