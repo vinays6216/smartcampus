@@ -1326,3 +1326,11 @@ tbody tr.clickable:hover {
   .card { box-shadow: none; border: 1px solid #ddd; }
   body { background: #fff; }
 }
+
+/* Weekly timetable grid */
+.tt-grid th, .tt-grid td { text-align: center; vertical-align: top; min-width: 96px; }
+.tt-grid tbody th { text-align: left; min-width: 52px; }
+.tt-slot { display: flex; flex-direction: column; gap: 2px; font-size: .82rem; line-height: 1.25; }
+.tt-edit { cursor: pointer; }
+.tt-edit:hover { background: var(--hover, rgba(127,127,127,.08)); }
+.tt-today th, .tt-today td { background: rgba(59,130,246,.07); }

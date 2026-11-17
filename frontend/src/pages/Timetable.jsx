@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import FormModal from '../components/FormModal';
 import FileButton from '../components/FileButton';
+import WeeklyTimetable from '../components/WeeklyTimetable';
 import { Async, Badge, Empty, PageHeader } from '../components/ui';
 import { fmtDate, fmtSize } from '../utils/format';
 import { errMsg, sectionLabel, sectionShort, toFormData } from '../utils/helpers';
@@ -55,8 +56,11 @@ export default function Timetable() {
         )}
       </PageHeader>
 
+      <WeeklyTimetable sectionId={isAdmin ? sectionId : undefined} editable={isAdmin} showSection={user.role === 'lecturer'} />
+
+      {f.data?.length > 0 && <h2 style={{ margin: '1rem 0 .5rem' }}>Uploaded time table files</h2>}
       <Async f={f}>
-        {!f.data?.length && <div className="card"><Empty>No time table has been uploaded yet.</Empty></div>}
+        {!f.data?.length && <div className="card"><Empty>No time table file has been uploaded.</Empty></div>}
         {f.data?.map((t) => (
           <div key={t.id} className="card">
             <div className="row">

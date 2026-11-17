@@ -23,6 +23,20 @@ export default function MarkAttendance() {
   const roster = useFetch(() => (taId ? get(`/teaching/${taId}/roster`, { date, period }) : Promise.resolve(null)), [taId, date, period]);
   const sessions = useFetch(() => (taId ? get('/attendance/sessions', { teachingAssignmentId: taId }) : Promise.resolve(null)), [taId]);
 
+  // weekly timetable (if set up): this class's periods on the chosen day
+  const mySlots = useFetch(() => get('/timetables/slots').catch(() => ({ data: [] })), []);
+  const dow = date ? ((new Date(`${date}T00:00:00`).getDay() + 6) % 7) + 1 : 0;
+  const daySlots = (mySlots.data || []).filter((sl) => String(sl.teachingAssignmentId) === String(taId) && sl.dayOfWeek === dow);
+  const applySlot = (sl) => {
+    setPeriod(sl.periodNo);
+    setMeta((m) => ({ ...m, startTime: sl.startTime.slice(0, 5), endTime: sl.endTime.slice(0, 5) }));
+  };
+  // when the class or date changes, jump to the first timetabled period of that day
+  useEffect(() => {
+    if (daySlots.length) applySlot(daySlots[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taId, date, mySlots.data]);
+
   const students = roster.data?.students || [];
   const existingId = roster.data?.existingSessionId || null;
 
@@ -111,6 +125,16 @@ export default function MarkAttendance() {
             <div><label>Start</label><input type="time" value={meta.startTime} onChange={(e) => setMeta({ ...meta, startTime: e.target.value })} /></div>
             <div><label>End</label><input type="time" value={meta.endTime} onChange={(e) => setMeta({ ...meta, endTime: e.target.value })} /></div>
           </div>
+          {taId && daySlots.length > 0 && (
+            <div className="btn-group" style={{ marginTop: '.6rem', alignItems: 'center' }}>
+              <span className="muted">Timetable for this day:</span>
+              {daySlots.map((sl) => (
+                <button key={sl.id} type="button" className={`btn btn-sm ${Number(period) === sl.periodNo ? 'btn-primary' : ''}`} onClick={() => applySlot(sl)}>
+                  P{sl.periodNo} {sl.startTime.slice(0, 5)}–{sl.endTime.slice(0, 5)}{sl.room ? ` · ${sl.room}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
         </Async>
       </div>
 
