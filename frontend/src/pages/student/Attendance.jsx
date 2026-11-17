@@ -73,6 +73,8 @@ export default function Attendance() {
               <StatCard label={s.from || s.to ? 'Attendance in this period' : 'Overall attendance'} value={s.overallPercentage != null ? `${s.overallPercentage}%` : '-'}
                 tone={s.overallPercentage != null && s.overallPercentage < s.minRequiredPercent ? 'red' : 'green'} />
               <StatCard label="Minimum required" value={`${s.minRequiredPercent}%`} tone="amber" />
+              {s.overall?.toReach > 0 && <StatCard label={`Classes in a row to reach ${s.minRequiredPercent}% overall`} value={s.overall.toReach} tone="red" />}
+              {s.overall?.toReach === 0 && s.overall?.canMiss != null && <StatCard label="Classes you can still miss overall" value={s.overall.canMiss} tone="green" />}
             </div>
             <div className="card">
               <h2>Subject-wise attendance</h2>
@@ -80,13 +82,14 @@ export default function Attendance() {
               {!!s.subjects.length && (
                 <div className="table-wrap">
                   <table>
-                    <thead><tr><th>Subject</th><th>Classes</th><th>Attended</th><th>Absent</th><th>Percentage</th></tr></thead>
+                    <thead><tr><th>Subject</th><th>Classes</th><th>Attended</th><th>Absent</th><th>Percentage</th><th>What it means</th></tr></thead>
                     <tbody>
                       {s.subjects.map((x) => (
                         <tr key={x.teachingAssignmentId} className={x.belowMinimum ? 'row-low' : ''}>
                           <td><strong>{x.subjectCode}</strong> {x.subjectName}</td>
                           <td>{x.totalClasses}</td><td>{x.attendedClasses}</td><td>{x.absentClasses}</td>
                           <td><PercentBar value={x.attendancePercentage} min={s.minRequiredPercent} /></td>
+                          <td><MarginText toReach={x.classesToReach} canMiss={x.canMiss} min={s.minRequiredPercent} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -192,4 +195,12 @@ export default function Attendance() {
       </FormModal>
     </>
   );
+}
+
+// "Attend the next 3 classes to reach 75%" / "You can miss 2 more classes"
+function MarginText({ toReach, canMiss, min }) {
+  if (toReach > 0) return <span className="text-red">Attend the next <strong>{toReach}</strong> class{toReach === 1 ? '' : 'es'} in a row to reach {min}%</span>;
+  if (canMiss == null) return <span className="muted">-</span>;
+  if (canMiss === 0) return <span className="muted">Exactly at the limit — don't miss the next class</span>;
+  return <span className="text-green">You can miss <strong>{canMiss}</strong> more class{canMiss === 1 ? '' : 'es'} and stay at {min}%</span>;
 }

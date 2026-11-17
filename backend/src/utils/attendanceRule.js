@@ -31,3 +31,19 @@ exports.summarize = (statuses) => {
     attendance_percentage: held ? Math.round((attended / held) * 10000) / 100 : null,
   };
 };
+
+// How far a student is from the minimum, with the same rule (excused classes do not count).
+//   toReach: classes in a row they must attend to reach the minimum (0 if already there)
+//   canMiss: classes they can still miss and stay at or above the minimum (0 if below)
+exports.margin = (attended, held, minPercent) => {
+  const a = Number(attended) || 0;
+  const h = Number(held) || 0;
+  const m = Number(minPercent);
+  if (!h || m <= 0) return { toReach: 0, canMiss: null };
+  if (m >= 100) return { toReach: a < h ? null : 0, canMiss: 0 }; // 100% can never be regained after a miss
+  const below = a * 100 < m * h;
+  return {
+    toReach: below ? Math.ceil((m * h - 100 * a) / (100 - m)) : 0,
+    canMiss: below ? 0 : Math.floor((100 * a) / m - h + 1e-9),
+  };
+};
