@@ -344,6 +344,49 @@ exports.notifyLow = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { notified: rows.length }, message: `${rows.length} student(s) notified` });
 });
 
+// Shortage list: students below the limit (default: the minimum) between two dates, per subject.
+// One class (teachingAssignmentId) or a whole section (sectionId: every subject; lecturers only see their own subjects).
+exports.shortage = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, sectionId, from, to } = req.query;
+  const below = req.query.below ?? env.attendanceMinPercent;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  if (!teachingAssignmentId && !sectionId) throw new ApiError(400, 'Choose a class or a section');
+  const where = ['ses.session_date BETWEEN ? AND ?'];
+  const params = [from, to];
+  if (teachingAssignmentId) {
+    await assertTeaches(req.user, teachingAssignmentId);
+    where.push('ta.id = ?'); params.push(teachingAssignmentId);
+  } else {
+    where.push('ta.section_id = ?'); params.push(sectionId);
+    if (req.user.role === 'lecturer') { where.push('ta.lecturer_id = ?'); params.push(req.user.profileId); }
+  }
+  const [rows] = await pool.query(
+    `SELECT s.id AS student_id, s.usn, u.full_name, sub.code AS subject_code, sub.name AS subject_name,
+            sec.name AS section_name, sec.semester_no, p.code AS program_code, lu.full_name AS lecturer_name,
+            ${RULE_SQL.total} AS total_classes, ${RULE_SQL.attended} AS attended_classes, ${RULE_SQL.percentage} AS attendance_percentage
+       FROM attendance_records ar
+       JOIN attendance_sessions ses ON ses.id = ar.session_id
+       JOIN teaching_assignments ta ON ta.id = ses.teaching_assignment_id
+       JOIN subjects sub ON sub.id = ta.subject_id
+       JOIN sections sec ON sec.id = ta.section_id
+       JOIN programs p ON p.id = sec.program_id
+       JOIN lecturers l ON l.id = ta.lecturer_id JOIN users lu ON lu.id = l.user_id
+       JOIN students s ON s.id = ar.student_id
+       JOIN users u ON u.id = s.user_id
+      WHERE ${where.join(' AND ')}
+      GROUP BY s.id, s.usn, u.full_name, sub.code, sub.name, sec.name, sec.semester_no, p.code, lu.full_name
+     HAVING attendance_percentage IS NOT NULL AND attendance_percentage < ?
+      ORDER BY s.usn, sub.code`,
+    [...params, below]
+  );
+  res.json({
+    success: true,
+    data: rows.map((r) => ({ ...r, classes_to_reach: margin(r.attended_classes, r.total_classes, env.attendanceMinPercent).toReach })),
+    filter: { from, to, below: Number(below) },
+    rule: attendanceRule(),
+  });
+});
+
 // Day-wise register: one row per student, one column per class held between two dates.
 // Cells hold the status (present/absent/late/excused) or null when the student had no record for that class.
 // Totals use the approved rule. Lecturer: own classes only. Admin: any class.

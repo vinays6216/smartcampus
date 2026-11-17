@@ -6,7 +6,8 @@ import FormModal from '../../components/FormModal';
 import { Badge, Empty, PageHeader, PercentBar, Spinner } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { today } from '../../utils/format';
-import { classLabel, downloadCsv, errMsg } from '../../utils/helpers';
+import { classLabel, downloadCsv, errMsg, sectionShort } from '../../utils/helpers';
+import { FileDown } from 'lucide-react';
 
 const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
 
@@ -64,6 +65,35 @@ export default function AttendanceReport() {
     if (why.trim().length < 3) { toast.error('Please give a reason (at least 3 characters)'); return; }
     try { await del(`/attendance/sessions/${ses.id}`, { reason: why.trim() }); toast.success('Class deleted'); setRegister(await loadRegister()); } catch (err) { toast.error(errMsg(err)); }
   };
+  // ---- printable PDFs (jspdf is loaded only when a PDF is made) ----
+  const [pdfBusy, setPdfBusy] = useState('');
+  const [pdfSection, setPdfSection] = useState('');
+  const sections = [...new Map((classes.data || []).map((t) => [t.sectionId, t])).values()];
+  const pdfLimit = form.below !== '' ? Number(form.below) : undefined;
+  const makePdf = async (kind) => {
+    const cls = (classes.data || []).find((t) => String(t.id) === String(form.teachingAssignmentId));
+    if (kind !== 'section' && !cls) { toast.error('Select a class first'); return; }
+    if (kind === 'section' && !pdfSection) { toast.error('Select a section first'); return; }
+    setPdfBusy(kind);
+    try {
+      const pdf = await import('../../utils/pdf');
+      if (kind === 'register') {
+        const reg = await loadRegister();
+        if (!reg.data.sessions.length) { toast.error('No classes were marked between these dates'); return; }
+        pdf.registerPdf({ classLabel: classLabel(cls), from: form.from, to: form.to, register: reg, minPercent: reg.rule?.minRequiredPercent ?? 75 });
+      } else {
+        const params = { from: form.from, to: form.to, ...(pdfLimit ? { below: pdfLimit } : {}),
+          ...(kind === 'section' ? { sectionId: pdfSection } : { teachingAssignmentId: form.teachingAssignmentId }) };
+        const body = await get('/attendance/shortage', params);
+        const sec = sections.find((t) => String(t.sectionId) === String(pdfSection));
+        pdf.shortagePdf({
+          scopeLabel: kind === 'section' ? `Section: ${sectionShort(sec)} — all ${user.role === 'lecturer' ? 'my ' : ''}subjects` : `Class: ${classLabel(cls)}`,
+          from: form.from, to: form.to, rows: body.data, below: body.filter.below, ruleText: body.rule?.text,
+        });
+      }
+    } catch (err) { toast.error(errMsg(err)); } finally { setPdfBusy(''); }
+  };
+
   const downloadRegister = async () => {
     if (!form.teachingAssignmentId) { toast.error('Select a class first'); return; }
     setRegLoading(true);
@@ -119,6 +149,27 @@ export default function AttendanceReport() {
           <button type="button" className="btn" disabled={regLoading} onClick={downloadRegister}>{regLoading ? 'Preparing...' : 'Download register (CSV)'}</button>
         </div>
       </form>
+
+      <div className="card">
+        <div className="row" style={{ alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: '0 0 .3rem' }}><FileDown size={18} style={{ verticalAlign: -3, marginRight: 6, color: 'var(--sc-brand)' }} />Printable reports (PDF)</h2>
+            <span className="muted">Uses the dates above{pdfLimit ? ` and the limit ${pdfLimit}%` : ''}; college name, signature lines and page numbers included.</span>
+          </div>
+          <div className="btn-group">
+            <button type="button" className="btn" disabled={!!pdfBusy} onClick={() => makePdf('register')}>{pdfBusy === 'register' ? 'Making…' : 'Class register'}</button>
+            <button type="button" className="btn" disabled={!!pdfBusy} onClick={() => makePdf('class')}>{pdfBusy === 'class' ? 'Making…' : 'Class shortage list'}</button>
+          </div>
+          <div className="btn-group" style={{ alignItems: 'flex-end' }}>
+            <div><label>Section</label>
+              <select value={pdfSection} onChange={(e) => setPdfSection(e.target.value)}>
+                <option value="">Select section...</option>
+                {sections.map((t) => <option key={t.sectionId} value={t.sectionId}>{sectionShort(t)}</option>)}
+              </select></div>
+            <button type="button" className="btn" disabled={!!pdfBusy} onClick={() => makePdf('section')}>{pdfBusy === 'section' ? 'Making…' : 'Section shortage list'}</button>
+          </div>
+        </div>
+      </div>
 
       {loading && <div className="center"><Spinner /></div>}
       {rows && !loading && (

@@ -73,6 +73,13 @@ router.post('/report/notify-low', authorize('lecturer', 'admin'), adminCan('atte
   body: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr, below: z.coerce.number().min(1).max(100).optional() }),
 }), c.notifyLow);
 
+router.get('/shortage', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
+  query: z.object({
+    teachingAssignmentId: id.optional(), sectionId: id.optional(), from: dateStr, to: dateStr,
+    below: z.coerce.number().min(1).max(100).optional(),
+  }),
+}), c.shortage);
+
 router.get('/register', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr }),
 }), c.register);
