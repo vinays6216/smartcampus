@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { z, id, dateStr, timeStr, boolOpt, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./announcements.controller');
 
 router.use(authenticate);
@@ -18,7 +18,7 @@ const eventSchema = z.object({
   subjectId: id.optional(),
 });
 
-router.post('/', authorize('lecturer', 'admin'), validate({
+router.post('/', authorize('lecturer', 'admin'), adminCan('announcements'), validate({
   body: z.object({
     title: z.string().trim().min(3).max(200),
     body: z.string().trim().min(3).max(5000),
@@ -32,7 +32,7 @@ router.post('/', authorize('lecturer', 'admin'), validate({
   }),
 }), c.create);
 
-router.put('/:id', authorize('lecturer', 'admin'), validate({
+router.put('/:id', authorize('lecturer', 'admin'), adminCan('announcements'), validate({
   params: idParam,
   body: z.object({
     title: z.string().trim().min(3).max(200).optional(), body: z.string().trim().min(3).max(5000).optional(),
@@ -40,6 +40,6 @@ router.put('/:id', authorize('lecturer', 'admin'), validate({
   }),
 }), c.update);
 
-router.delete('/:id', authorize('lecturer', 'admin'), validate({ params: idParam }), c.remove);
+router.delete('/:id', authorize('lecturer', 'admin'), adminCan('announcements'), validate({ params: idParam }), c.remove);
 
 module.exports = router;

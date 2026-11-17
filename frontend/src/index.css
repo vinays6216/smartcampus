@@ -1326,3 +1326,21 @@ tbody tr.clickable:hover {
   .card { box-shadow: none; border: 1px solid #ddd; }
   body { background: #fff; }
 }
+
+/* Weekly timetable grid */
+.tt-grid th, .tt-grid td { text-align: center; vertical-align: top; min-width: 96px; }
+.tt-grid tbody th { text-align: left; min-width: 52px; }
+.tt-slot { display: flex; flex-direction: column; gap: 2px; font-size: .82rem; line-height: 1.25; }
+.tt-edit { cursor: pointer; }
+.tt-edit:hover { background: var(--hover, rgba(127,127,127,.08)); }
+.tt-today th, .tt-today td { background: rgba(59,130,246,.07); }
+
+/* Small label chip (permissions) */
+.chip { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .78rem; background: rgba(59,130,246,.1); color: inherit; }
+
+/* Editable register */
+.register th, .register td { text-align: center; white-space: nowrap; }
+.register td:nth-child(2), .register th:nth-child(2) { text-align: left; }
+.register th .btn-icon { font-size: .7rem; opacity: .5; padding: 0 .2rem; }
+.register th .btn-icon:hover { opacity: 1; }
+.btn-cell { background: none; border: 0; padding: 0; cursor: pointer; }

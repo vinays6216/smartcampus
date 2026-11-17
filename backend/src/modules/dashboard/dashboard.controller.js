@@ -2,6 +2,7 @@ const env = require('../../config/env');
 const { pool } = require('../../config/db');
 const asyncHandler = require('../../utils/asyncHandler');
 const { getStudent } = require('../../utils/profile');
+const { margin } = require('../../utils/attendanceRule');
 
 // Next 7 days for the dashboard: calendar events the user can see + assignment deadlines.
 // Student: own section's events + own unsubmitted assignments. Lecturer: campus + taught sections + own events,
@@ -111,4 +112,66 @@ exports.summary = asyncHandler(async (req, res) => {
     data = row;
   }
   res.json({ success: true, data: { role, unreadNotifications: unread.count, ...data } });
+});
+
+// "Today" panel. Student: today's timetable (with own mark once taken), next deadline, subjects below the minimum
+// (with classes needed). Lecturer: own classes today with marked / not yet. Timetable parts are empty without
+// migration 001.
+exports.today = asyncHandler(async (req, res) => {
+  const { role, profileId } = req.user;
+  const dow = ((new Date().getDay() + 6) % 7) + 1; // 1 = Monday
+  const safe = async (sql, params) => {
+    try { return (await pool.query(sql, params))[0]; } catch (e) { if (e.code === 'ER_NO_SUCH_TABLE') return []; throw e; }
+  };
+
+  if (role === 'student') {
+    const s = await getStudent(profileId);
+    const classes = await safe(
+      `SELECT sl.id, sl.period_no, sl.start_time, sl.end_time, sl.room, sub.code AS subject_code, sub.name AS subject_name,
+              lu.full_name AS lecturer_name, ar.status AS my_status
+         FROM timetable_slots sl
+         JOIN teaching_assignments ta ON ta.id = sl.teaching_assignment_id
+         JOIN subjects sub ON sub.id = ta.subject_id
+         JOIN lecturers l ON l.id = ta.lecturer_id JOIN users lu ON lu.id = l.user_id
+         LEFT JOIN attendance_sessions ses ON ses.teaching_assignment_id = ta.id AND ses.session_date = CURDATE() AND ses.period_no = sl.period_no
+         LEFT JOIN attendance_records ar ON ar.session_id = ses.id AND ar.student_id = ?
+        WHERE sl.section_id = ? AND sl.day_of_week = ?
+        ORDER BY sl.start_time`,
+      [s.id, s.section_id, dow]
+    );
+    const [[next]] = await pool.query(
+      `SELECT assignment_id AS id, title, subject_name, deadline, display_status
+         FROM v_student_assignments
+        WHERE student_id = ? AND assignment_status = 'published' AND submission_status = 'not_submitted' AND deadline >= NOW()
+        ORDER BY deadline LIMIT 1`,
+      [s.id]
+    );
+    const [subjects] = await pool.query(
+      `SELECT subject_code, subject_name, total_classes, attended_classes, attendance_percentage
+         FROM v_student_subject_attendance WHERE student_id = ? ORDER BY attendance_percentage`,
+      [s.id]
+    );
+    const warnings = subjects
+      .filter((x) => x.attendance_percentage !== null && Number(x.attendance_percentage) < env.attendanceMinPercent)
+      .map((x) => ({ ...x, classes_to_reach: margin(x.attended_classes, x.total_classes, env.attendanceMinPercent).toReach }));
+    return res.json({ success: true, data: { dayOfWeek: dow, classes, nextDeadline: next || null, warnings, minRequiredPercent: env.attendanceMinPercent } });
+  }
+
+  if (role === 'lecturer') {
+    const classes = await safe(
+      `SELECT sl.id, sl.teaching_assignment_id, sl.period_no, sl.start_time, sl.end_time, sl.room,
+              sub.code AS subject_code, sub.name AS subject_name, sec.name AS section_name, sec.semester_no, p.code AS program_code,
+              ses.id AS session_id
+         FROM timetable_slots sl
+         JOIN teaching_assignments ta ON ta.id = sl.teaching_assignment_id
+         JOIN subjects sub ON sub.id = ta.subject_id
+         JOIN sections sec ON sec.id = sl.section_id JOIN programs p ON p.id = sec.program_id
+         LEFT JOIN attendance_sessions ses ON ses.teaching_assignment_id = ta.id AND ses.session_date = CURDATE() AND ses.period_no = sl.period_no
+        WHERE ta.lecturer_id = ? AND sl.day_of_week = ?
+        ORDER BY sl.start_time`,
+      [profileId, dow]
+    );
+    return res.json({ success: true, data: { dayOfWeek: dow, classes } });
+  }
+  res.json({ success: true, data: { dayOfWeek: dow, classes: [] } });
 });

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { LogIn } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { errMsg } from '../../utils/helpers';
+import { AuthLayout, PasswordInput } from './AuthLayout';
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -20,32 +22,34 @@ export default function Login() {
       const u = await login(form.email.trim(), form.password);
       navigate(u.mustChangePassword ? '/change-password' : '/', { replace: true });
     } catch (err) {
-      setError(errMsg(err));
+      const msg = errMsg(err);
+      setError(/network/i.test(msg) ? "Can't reach Smart Campus. Is the backend running?" : msg);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="login-wrap">
-      <div className="login-card">
-        <h1>🎓 Smart Campus</h1>
-        <p className="muted">Sign in with your college account</p>
-        <div className="login-roles-preview">
-          <span className="role-chip chip-student">Student</span>
-          <span className="role-chip chip-lecturer">Lecturer</span>
-          <span className="role-chip chip-admin">Admin</span>
+    <AuthLayout
+      title="Welcome back"
+      description="Sign in with the account your college gave you."
+      footer={<>Students, lecturers and admins all sign in here.</>}
+    >
+      <form className="au-form" onSubmit={submit}>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <input id="email" type="email" required autoComplete="email" placeholder="you@college.edu"
+            value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </div>
-        <form onSubmit={submit}>
-          {error && <div className="alert alert-error">{error}</div>}
-          <div className="field"><label>Email</label>
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-          <div className="field"><label>Password</label>
-            <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
-          <button className="btn btn-primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
-          <Link to="/forgot-password">Forgot password?</Link>
-        </form>
-      </div>
-    </div>
+        <div className="field">
+          <label htmlFor="password">Password</label>
+          <PasswordInput id="password" required autoComplete="current-password" placeholder="Your password"
+            value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        </div>
+        <div className="au-row"><Link className="au-link" to="/forgot-password">Forgot password?</Link></div>
+        <button className="btn btn-primary" disabled={busy}><LogIn size={16} />{busy ? 'Signing in…' : 'Sign in'}</button>
+      </form>
+    </AuthLayout>
   );
 }

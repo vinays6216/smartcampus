@@ -30,6 +30,12 @@ import Students from './pages/admin/Students';
 import Lecturers from './pages/admin/Lecturers';
 import Academic from './pages/admin/Academic';
 import Teaching from './pages/admin/Teaching';
+import PlatformAdmins from './pages/platform/Admins';
+import Activity from './pages/platform/Activity';
+import Leave from './pages/student/Leave';
+import MyMarks from './pages/student/MyMarks';
+import InternalMarks from './pages/lecturer/InternalMarks';
+import LeaveRequests from './pages/lecturer/LeaveRequests';
 
 export default function App() {
   return (
@@ -54,6 +60,8 @@ export default function App() {
           <Route element={<ProtectedRoute roles={['student']} />}>
             <Route path="/profile" element={<StudentProfile />} />
             <Route path="/attendance" element={<StudentAttendance />} />
+            <Route path="/leave" element={<Leave />} />
+            <Route path="/my-marks" element={<MyMarks />} />
             <Route path="/assignments" element={<StudentAssignments />} />
             <Route path="/assignments/:id" element={<AssignmentDetail />} />
           </Route>
@@ -68,6 +76,8 @@ export default function App() {
             <Route path="/attendance-report" element={<AttendanceReport />} />
             <Route path="/attendance-issues" element={<AttendanceIssues />} />
             <Route path="/attendance-corrections" element={<AttendanceCorrections />} />
+            <Route path="/leave-requests" element={<LeaveRequests />} />
+            <Route path="/marks" element={<InternalMarks />} />
             <Route path="/manage-assignments" element={<ManageAssignments />} />
             <Route path="/manage-assignments/:id/submissions" element={<Submissions />} />
           </Route>
@@ -78,6 +88,8 @@ export default function App() {
             <Route path="/lecturers" element={<Lecturers />} />
             <Route path="/academic" element={<Academic />} />
             <Route path="/teaching" element={<Teaching />} />
+            <Route path="/platform" element={<PlatformAdmins />} />
+            <Route path="/activity" element={<Activity />} />
           </Route>
         </Route>
       </Route>

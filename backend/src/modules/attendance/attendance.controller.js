@@ -6,7 +6,9 @@ const { todayLocal } = require('../../utils/sql');
 const { assertTeaches } = require('../../utils/ownership');
 const { saveFileRecord } = require('../../utils/files');
 const { notifyUsers } = require('../../utils/notify');
-const { attendanceRule, RULE_SQL } = require('../../utils/attendanceRule');
+const { attendanceRule, RULE_SQL, summarize, margin } = require('../../utils/attendanceRule');
+const { audit } = require('../../utils/audit');
+const { approvedLeaveOn } = require('../leave/leave.controller');
 
 // =====================================================================
 //  STUDENT
@@ -46,7 +48,11 @@ exports.mySummary = asyncHandler(async (req, res) => {
       rule: attendanceRule(),
       minRequiredPercent: env.attendanceMinPercent,
       overallPercentage: overall,
-      subjects: subjects.map((s) => ({ ...s, belowMinimum: s.attendance_percentage !== null && s.attendance_percentage < env.attendanceMinPercent })),
+      overall: { ...margin(attended, total, env.attendanceMinPercent) },
+      subjects: subjects.map((s) => {
+        const m = margin(s.attended_classes, s.total_classes, env.attendanceMinPercent);
+        return { ...s, belowMinimum: s.attendance_percentage !== null && s.attendance_percentage < env.attendanceMinPercent, classes_to_reach: m.toReach, can_miss: m.canMiss };
+      }),
     },
   });
 });
@@ -177,9 +183,13 @@ exports.createSession = asyncHandler(async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [b.teachingAssignmentId, b.sessionDate, b.periodNo, b.startTime || null, b.endTime || null, b.topic || null, req.user.profileId]
     );
+    // students on approved leave that day start as excused (an explicit mark from the lecturer still wins)
+    const onLeave = await approvedLeaveOn(conn, [...roster], b.sessionDate);
     const rows = [...roster].map((studentId) => {
       const m = marks.get(studentId);
-      return [s.insertId, studentId, m ? m.status : 'present', m ? m.remarks || null : null];
+      if (m) return [s.insertId, studentId, m.status, m.remarks || null];
+      if (onLeave.has(studentId)) return [s.insertId, studentId, 'excused', `On leave (#${onLeave.get(studentId)})`];
+      return [s.insertId, studentId, 'present', null];
     });
     await conn.query('INSERT INTO attendance_records (session_id, student_id, status, remarks) VALUES ?', [rows]);
     return s.insertId;
@@ -236,11 +246,24 @@ exports.listSessions = asyncHandler(async (req, res) => {
   res.json({ success: true, data: rows });
 });
 
+// Who may change a saved class: the lecturer of the class within the edit window, or an admin (reason required).
+async function assertCanChange(user, session, reason) {
+  await assertTeaches(user, session.teaching_assignment_id);
+  if (user.role === 'admin') {
+    if (!reason) throw new ApiError(400, 'Admins must give a reason for changing attendance');
+    return;
+  }
+  const days = env.attendanceEditWindowDays;
+  if (days > 0) {
+    const age = Math.round((Date.parse(todayLocal()) - Date.parse(String(session.session_date).slice(0, 10))) / 86400000);
+    if (age > days) throw new ApiError(403, `Classes older than ${days} days can only be changed by an admin`);
+  }
+}
+
 // Edit marks of a session. The DB trigger writes every status change into attendance_record_history.
 exports.updateRecords = asyncHandler(async (req, res) => {
-  if (req.user.role !== 'lecturer') throw new ApiError(403, 'Only lecturers can edit attendance');
   const session = await getSessionOrFail(req.params.id);
-  await assertTeaches(req.user, session.teaching_assignment_id);
+  await assertCanChange(req.user, session, req.body.reason);
 
   await withTransaction(async (conn) => {
     await conn.query('SET @app_user_id = ?, @change_reason = ?', [req.user.id, req.body.reason || null]);
@@ -259,6 +282,29 @@ exports.updateRecords = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Attendance updated' });
 });
 
+// Delete a class marked by mistake. Records, issues and history of that class go with it (FK cascade),
+// so a full snapshot is written to audit_logs first. Not allowed while a student's issue is still open.
+exports.deleteSession = asyncHandler(async (req, res) => {
+  const session = await getSessionOrFail(req.params.id);
+  await assertCanChange(req.user, session, req.body.reason);
+  const snapshot = await withTransaction(async (conn) => {
+    const [[open]] = await conn.query(
+      `SELECT COUNT(*) AS n FROM attendance_issues ai JOIN attendance_records ar ON ar.id = ai.attendance_record_id
+        WHERE ar.session_id = ? AND ai.status = 'open'`,
+      [session.id]
+    );
+    if (open.n) throw new ApiError(409, 'A student has an open attendance issue for this class; decide it first');
+    const [records] = await conn.query('SELECT student_id, status, remarks FROM attendance_records WHERE session_id = ?', [session.id]);
+    await conn.query('DELETE FROM attendance_sessions WHERE id = ?', [session.id]);
+    return {
+      teaching_assignment_id: session.teaching_assignment_id, subject_code: session.subject_code, section_name: session.section_name,
+      session_date: session.session_date, period_no: session.period_no, topic: session.topic, reason: req.body.reason, records,
+    };
+  });
+  await audit(req, 'ATTENDANCE_SESSION_DELETED', 'attendance_session', session.id, snapshot, null);
+  res.json({ success: true, message: 'Class deleted' });
+});
+
 // Percentage report between two dates; ?below=75 lists only students under 75%
 exports.report = asyncHandler(async (req, res) => {
   const { teachingAssignmentId, from, to, below } = req.query;
@@ -268,6 +314,77 @@ exports.report = asyncHandler(async (req, res) => {
     teachingAssignmentId, from, to, below === undefined ? null : below,
   ]);
   res.json({ success: true, data: result[0], filter: { from, to, belowPercent: below ?? null }, rule: attendanceRule() });
+});
+
+// Notify every student of the class whose attendance between the dates is below a limit (default: the minimum).
+// One bell notification per student with their own percentage. Students with no classes held are skipped.
+exports.notifyLow = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, from, to } = req.body;
+  const below = req.body.below ?? env.attendanceMinPercent;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  await assertTeaches(req.user, teachingAssignmentId);
+
+  const [result] = await pool.query('CALL sp_attendance_report(?, ?, ?, ?)', [teachingAssignmentId, from, to, below]);
+  const low = (result[0] || []).filter((r) => r.attendance_percentage !== null && Number(r.attendance_percentage) < below);
+  if (!low.length) return res.json({ success: true, data: { notified: 0 }, message: 'No student is below the limit' });
+
+  const [[cls]] = await pool.query(
+    `SELECT sub.code, sub.name FROM teaching_assignments ta JOIN subjects sub ON sub.id = ta.subject_id WHERE ta.id = ?`,
+    [teachingAssignmentId]
+  );
+  const [users] = await pool.query('SELECT id, user_id FROM students WHERE id IN (?)', [low.map((r) => r.student_id)]);
+  const userOf = new Map(users.map((u) => [u.id, u.user_id]));
+  const rows = low.filter((r) => userOf.has(r.student_id)).map((r) => [
+    userOf.get(r.student_id), 'system', `Low attendance in ${cls.code}`,
+    `Your attendance in ${cls.code} - ${cls.name} from ${from} to ${to} is ${Number(r.attendance_percentage)}% `
+      + `(${r.attended_classes} of ${r.total_classes} classes). Minimum required: ${env.attendanceMinPercent}%.`,
+    'attendance', Number(teachingAssignmentId),
+  ]);
+  await pool.query('INSERT INTO notifications (user_id, type, title, message, entity_type, entity_id) VALUES ?', [rows]);
+  res.json({ success: true, data: { notified: rows.length }, message: `${rows.length} student(s) notified` });
+});
+
+// Shortage list: students below the limit (default: the minimum) between two dates, per subject.
+// One class (teachingAssignmentId) or a whole section (sectionId: every subject; lecturers only see their own subjects).
+exports.shortage = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, sectionId, from, to } = req.query;
+  const below = req.query.below ?? env.attendanceMinPercent;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  if (!teachingAssignmentId && !sectionId) throw new ApiError(400, 'Choose a class or a section');
+  const where = ['ses.session_date BETWEEN ? AND ?'];
+  const params = [from, to];
+  if (teachingAssignmentId) {
+    await assertTeaches(req.user, teachingAssignmentId);
+    where.push('ta.id = ?'); params.push(teachingAssignmentId);
+  } else {
+    where.push('ta.section_id = ?'); params.push(sectionId);
+    if (req.user.role === 'lecturer') { where.push('ta.lecturer_id = ?'); params.push(req.user.profileId); }
+  }
+  const [rows] = await pool.query(
+    `SELECT s.id AS student_id, s.usn, u.full_name, sub.code AS subject_code, sub.name AS subject_name,
+            sec.name AS section_name, sec.semester_no, p.code AS program_code, lu.full_name AS lecturer_name,
+            ${RULE_SQL.total} AS total_classes, ${RULE_SQL.attended} AS attended_classes, ${RULE_SQL.percentage} AS attendance_percentage
+       FROM attendance_records ar
+       JOIN attendance_sessions ses ON ses.id = ar.session_id
+       JOIN teaching_assignments ta ON ta.id = ses.teaching_assignment_id
+       JOIN subjects sub ON sub.id = ta.subject_id
+       JOIN sections sec ON sec.id = ta.section_id
+       JOIN programs p ON p.id = sec.program_id
+       JOIN lecturers l ON l.id = ta.lecturer_id JOIN users lu ON lu.id = l.user_id
+       JOIN students s ON s.id = ar.student_id
+       JOIN users u ON u.id = s.user_id
+      WHERE ${where.join(' AND ')}
+      GROUP BY s.id, s.usn, u.full_name, sub.code, sub.name, sec.name, sec.semester_no, p.code, lu.full_name
+     HAVING attendance_percentage IS NOT NULL AND attendance_percentage < ?
+      ORDER BY s.usn, sub.code`,
+    [...params, below]
+  );
+  res.json({
+    success: true,
+    data: rows.map((r) => ({ ...r, classes_to_reach: margin(r.attended_classes, r.total_classes, env.attendanceMinPercent).toReach })),
+    filter: { from, to, below: Number(below) },
+    rule: attendanceRule(),
+  });
 });
 
 // Day-wise register: one row per student, one column per class held between two dates.
@@ -307,19 +424,18 @@ exports.register = asyncHandler(async (req, res) => {
   const rows = students.map((st) => {
     const marks = byStudent.get(st.student_id) || new Map();
     const statuses = sessions.map((ses) => marks.get(ses.id) || null);
-    const held = statuses.filter((x) => x && x !== 'excused').length;
-    const attended = statuses.filter((x) => x === 'present' || x === 'late').length;
     return {
       student_id: st.student_id, usn: st.usn, full_name: st.full_name, student_status: st.student_status,
       statuses,
-      total_classes: held,
-      attended_classes: attended,
-      absent_classes: statuses.filter((x) => x === 'absent').length,
-      excused_classes: statuses.filter((x) => x === 'excused').length,
-      attendance_percentage: held ? Math.round((attended / held) * 10000) / 100 : null,
+      ...summarize(statuses),
     };
   });
-  res.json({ success: true, data: { from, to, sessions, students: rows }, rule: attendanceRule() });
+  res.json({
+    success: true,
+    data: { from, to, sessions, students: rows },
+    rule: attendanceRule(),
+    editing: { windowDays: env.attendanceEditWindowDays, reasonRequired: req.user.role === 'admin' },
+  });
 });
 
 // Marks of the most recent class of this teaching assignment before a date/period, so the lecturer can copy them.

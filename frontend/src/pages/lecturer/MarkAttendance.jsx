@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { get, post, put } from '../../api/client';
+import { del, get, post, put } from '../../api/client';
 import useFetch from '../../hooks/useFetch';
 import { useToast } from '../../context/ToastContext';
 import { Async, Badge, Empty, PageHeader } from '../../components/ui';
@@ -22,6 +22,20 @@ export default function MarkAttendance() {
   // students of the class + whether this date/period was already marked
   const roster = useFetch(() => (taId ? get(`/teaching/${taId}/roster`, { date, period }) : Promise.resolve(null)), [taId, date, period]);
   const sessions = useFetch(() => (taId ? get('/attendance/sessions', { teachingAssignmentId: taId }) : Promise.resolve(null)), [taId]);
+
+  // weekly timetable (if set up): this class's periods on the chosen day
+  const mySlots = useFetch(() => get('/timetables/slots').catch(() => ({ data: [] })), []);
+  const dow = date ? ((new Date(`${date}T00:00:00`).getDay() + 6) % 7) + 1 : 0;
+  const daySlots = (mySlots.data || []).filter((sl) => String(sl.teachingAssignmentId) === String(taId) && sl.dayOfWeek === dow);
+  const applySlot = (sl) => {
+    setPeriod(sl.periodNo);
+    setMeta((m) => ({ ...m, startTime: sl.startTime.slice(0, 5), endTime: sl.endTime.slice(0, 5) }));
+  };
+  // when the class or date changes, jump to the first timetabled period of that day
+  useEffect(() => {
+    if (daySlots.length) applySlot(daySlots[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taId, date, mySlots.data]);
 
   const students = roster.data?.students || [];
   const existingId = roster.data?.existingSessionId || null;
@@ -64,6 +78,18 @@ export default function MarkAttendance() {
       })));
       toast.success(`Copied marks from ${fmtDate(prev.sessionDate)}, period ${prev.periodNo}. Check and save.`);
     } catch (e) { toast.error(errMsg(e)); } finally { setCopying(false); }
+  };
+
+  const deleteSession = async (s) => {
+    const why = window.prompt(`Delete the class of ${fmtDate(s.sessionDate)}, period ${s.periodNo}? All its marks are removed.\n\nReason (required):`);
+    if (why === null) return;
+    if (why.trim().length < 3) { toast.error('Please give a reason (at least 3 characters)'); return; }
+    try {
+      await del(`/attendance/sessions/${s.id}`, { reason: why.trim() });
+      toast.success('Class deleted');
+      sessions.reload();
+      roster.reload();
+    } catch (e) { toast.error(errMsg(e)); }
   };
 
   const counts = STATUSES.map((s) => [s, Object.values(marks).filter((m) => m.status === s).length]);
@@ -111,6 +137,16 @@ export default function MarkAttendance() {
             <div><label>Start</label><input type="time" value={meta.startTime} onChange={(e) => setMeta({ ...meta, startTime: e.target.value })} /></div>
             <div><label>End</label><input type="time" value={meta.endTime} onChange={(e) => setMeta({ ...meta, endTime: e.target.value })} /></div>
           </div>
+          {taId && daySlots.length > 0 && (
+            <div className="btn-group" style={{ marginTop: '.6rem', alignItems: 'center' }}>
+              <span className="muted">Timetable for this day:</span>
+              {daySlots.map((sl) => (
+                <button key={sl.id} type="button" className={`btn btn-sm ${Number(period) === sl.periodNo ? 'btn-primary' : ''}`} onClick={() => applySlot(sl)}>
+                  P{sl.periodNo} {sl.startTime.slice(0, 5)}–{sl.endTime.slice(0, 5)}{sl.room ? ` · ${sl.room}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
         </Async>
       </div>
 
@@ -181,7 +217,12 @@ export default function MarkAttendance() {
                 {sessions.data.map((s) => (
                   <tr key={s.id}>
                     <td>{fmtDate(s.sessionDate)}</td><td>{s.periodNo}</td><td>{s.topic || '-'}</td><td>{s.presentCount}</td><td>{s.absentCount}</td>
-                    <td><button className="btn btn-sm" onClick={() => { setDate(s.sessionDate); setPeriod(s.periodNo); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Open</button></td>
+                    <td>
+                      <div className="btn-group">
+                        <button className="btn btn-sm" onClick={() => { setDate(s.sessionDate); setPeriod(s.periodNo); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Open</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => deleteSession(s)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

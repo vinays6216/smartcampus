@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const cruds = require('./academic.controller');
 
 router.use(authenticate);
@@ -14,9 +14,9 @@ router.use(authenticate);
 for (const [name, crud] of Object.entries(cruds)) {
   router.get(`/${name}`, crud.list);
   router.get(`/${name}/:id`, crud.get);
-  router.post(`/${name}`, authorize('admin'), crud.create);
-  router.put(`/${name}/:id`, authorize('admin'), crud.update);
-  router.delete(`/${name}/:id`, authorize('admin'), crud.remove);
+  router.post(`/${name}`, authorize('admin'), adminCan('academic'), crud.create);
+  router.put(`/${name}/:id`, authorize('admin'), adminCan('academic'), crud.update);
+  router.delete(`/${name}/:id`, authorize('admin'), adminCan('academic'), crud.remove);
 }
 
 module.exports = router;

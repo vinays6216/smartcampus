@@ -52,7 +52,19 @@ Run it as the MySQL root user (MySQL Workbench: File → Open SQL Script → run
 
 ```powershell
 mysql -u root -p < database/schema.sql
+mysql -u root -p < database/migrations/001_timetable_slots.sql
+mysql -u root -p < database/migrations/002_admin_permissions.sql
+mysql -u root -p < database/migrations/003_leave_requests.sql
+mysql -u root -p < database/migrations/004_internal_marks.sql
 ```
+
+`database/migrations/` holds additions made after the original schema (run each file once, in order; they are safe to run again).
+`001_timetable_slots.sql` adds the weekly timetable grid. `002_admin_permissions.sql` adds the platform admin and per-admin
+permissions: the starter admin `admin@smartcampus.local` becomes the platform admin, other existing admins keep full rights.
+The platform admin (menu **Platform Admins**) creates admins and ticks what each may use: students & lecturers, academic
+setup, timetables, attendance, announcements & calendar, assignments & materials. Locked out? `npm run create-admin -- --email <admin> --platform`.
+`003_leave_requests.sql` adds student leave requests (approval turns absent marks on those days into excused).
+`004_internal_marks.sql` adds internal marks (tests, quizzes, labs; published to students). Existing databases only need the migration files.
 
 Then, still as root, turn on the event scheduler (deadline reminders) and create a limited account for the app:
 
@@ -142,6 +154,9 @@ Run these commands from the relevant package directory.
 |---|---|---|
 | `backend` | `npm run dev` | Start API with automatic restart |
 | `backend` | `npm start` | Start API |
+| `backend` | `npm test` | Unit and route tests (no database needed) |
+| GitHub | `.github/workflows/ci.yml` | On every push / pull request: backend tests, frontend build, and the smoke test against a throwaway MySQL |
+| `backend` | `npm run smoke` | End-to-end test of the whole workflow — **throwaway database only** (see backend/README.md) |
 | `backend` | `npm run create-admin -- --email …` | Set the starter admin's password (or `--name …` to add an admin) |
 | repo root | `start-dev.cmd` / `.\start-dev.ps1` | Start backend + frontend in two windows |
 | `frontend` | `npm run dev` | Start Vite development server |
@@ -176,3 +191,20 @@ Role and ownership checks restrict access to the appropriate users and classes. 
 
 - [Backend README](backend/README.md)
 - [Frontend README](frontend/README.md)
+
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` / `development` and on pull requests:
+
+1. **Backend tests** — `npm test` (no database).
+2. **Frontend build** — `npm run build`.
+3. **End-to-end smoke test** — starts a throwaway MySQL 8 service, loads `database/schema.sql` and every migration
+   (twice, to prove they are re-runnable), starts the API and runs `npm run smoke` (~180 checks).
+
+Only throwaway values are used in the workflow; no repository secrets are needed.
+
+## PDF reports
+
+Attendance Report → **Printable reports (PDF)**: class register, class shortage list, section shortage list
+(college name, signature lines, page numbers). Set the college name in `frontend/.env`:
+`VITE_COLLEGE_NAME=Your College Name`.

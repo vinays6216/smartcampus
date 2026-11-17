@@ -1,11 +1,13 @@
 const router = require('express').Router();
 const { z, id, dateStr, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const upload = require('../../middleware/upload');
 const c = require('./users.controller');
 
 router.use(authenticate, authorize('admin'));
+// the admin dashboard counts are for every admin; everything else needs the "users" permission
+router.use((req, res, next) => (req.path === '/dashboard/counts' ? next() : adminCan('users')(req, res, next)));
 
 const email = z.string().trim().toLowerCase().email();
 const optText = (max) => z.string().trim().max(max).optional();

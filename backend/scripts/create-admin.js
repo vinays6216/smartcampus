@@ -5,6 +5,8 @@
 //   node scripts/create-admin.js --email admin@smartcampus.local
 // Or create another admin (users row + admins profile row):
 //   node scripts/create-admin.js --email admin@college.edu --name "Admin Name" [--code ADM002] [--designation "Administrator"]
+// Add --platform to make the account a platform admin (needs database/migrations/002_admin_permissions.sql).
+// This is also the way back in if no platform admin can sign in any more.
 //
 // The password is read from the ADMIN_PASSWORD environment variable. If it is not set, a random
 // temporary password is generated and printed once; the admin must change it at first sign-in.
@@ -16,6 +18,18 @@ const { pool, withTransaction } = require('../src/config/db');
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+const platform = process.argv.includes('--platform');
+async function grantPlatform(conn, adminId) {
+  if (!platform) return;
+  try {
+    await conn.query("INSERT IGNORE INTO admin_permissions (admin_id, permission) VALUES (?, 'platform')", [adminId]);
+    console.log('Platform admin rights granted.');
+  } catch (e) {
+    if (e.code === 'ER_NO_SUCH_TABLE') throw new Error('run database/migrations/002_admin_permissions.sql first (needed for --platform).');
+    throw e;
+  }
 }
 
 (async () => {
@@ -46,6 +60,7 @@ function arg(name, fallback) {
           "UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active' WHERE id = ?",
           [hash, generated ? 1 : 0, existing.id]
         );
+        await grantPlatform(conn, profile.id);
         return 'Password set for existing admin';
       }
 
@@ -62,6 +77,8 @@ function arg(name, fallback) {
         'INSERT INTO admins (user_id, employee_code, designation) VALUES (?, ?, ?)',
         [u.insertId, employeeCode, arg('designation', 'Administrator')]
       );
+      const [[created]] = await conn.query('SELECT id FROM admins WHERE user_id = ?', [u.insertId]);
+      await grantPlatform(conn, created.id);
       return `Admin created (employee code ${employeeCode})`;
     });
     console.log(`${action}: ${email}`);

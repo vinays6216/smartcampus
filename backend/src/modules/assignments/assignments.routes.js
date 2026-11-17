@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { z, id, bool, boolOpt, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
 const upload = require('../../middleware/upload');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./assignments.controller');
 
 router.use(authenticate);
@@ -16,7 +16,7 @@ const assignmentFields = {
 
 // =================== Lecturer / Admin ===================
 // Admin can list, view, close, delete (draft) and see submissions of every assignment.
-const staff = authorize('lecturer', 'admin');
+const staff = [authorize('lecturer', 'admin'), adminCan('assignments')];
 
 router.get('/manage', staff, validate({
   query: z.object({ teachingAssignmentId: id.optional(), status: z.enum(['draft', 'published', 'closed']).optional() }),

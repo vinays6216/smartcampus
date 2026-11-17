@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Async, Badge, Empty, PageHeader, StatCard } from '../components/ui';
 import { fmtDate, fmtDateTime, fmtTime, timeLeft } from '../utils/format';
 import { label } from '../utils/helpers';
+import TodayPanel from '../components/TodayPanel';
 
 // Student only: assignment alerts (due within 24 h + overdue) and latest announcements
 function StudentExtras() {
@@ -106,10 +107,11 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title={`Welcome, ${user.fullName}`} subtitle={`Signed in as ${user.role}`} />
+      <PageHeader title={`Welcome, ${user.fullName}`} subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} />
       <Async f={f}>
         {user.role === 'student' && (
           <>
+            <TodayPanel role="student" />
             <div className="grid">
               <StatCard label="Overall attendance" value={d.attendance?.overallPercentage != null ? `${d.attendance.overallPercentage}%` : '-'}
                 tone={d.attendance?.overallPercentage < d.attendance?.minRequiredPercent ? 'red' : 'green'} to="/attendance" />
@@ -118,8 +120,6 @@ export default function Dashboard() {
               <StatCard label="Pending assignments" value={d.assignments?.pending} to="/assignments" />
               <StatCard label="Due soon (24 h)" value={d.assignments?.dueSoon} tone="amber" to="/assignments" />
               <StatCard label="Overdue" value={d.assignments?.overdue} tone="red" to="/assignments" />
-              <StatCard label="Submitted" value={d.assignments?.submitted} tone="green" to="/assignments" />
-              <StatCard label="Open attendance issues" value={d.openIssues} tone="amber" to="/attendance" />
               <StatCard label="Unread alerts" value={d.unreadNotifications} to="/notifications" />
             </div>
             <StudentExtras />
@@ -127,6 +127,7 @@ export default function Dashboard() {
           </>
         )}
 
+        {user.role === 'lecturer' && <TodayPanel role="lecturer" />}
         {user.role === 'lecturer' && (
           <div className="grid">
             <StatCard label="My classes" value={d.classes} to="/mark-attendance" />

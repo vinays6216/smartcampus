@@ -4,7 +4,7 @@ REST API for the Smart Campus Management System. It matches the `smart_campus` M
 
 ## 1. Run it
 
-1. Create the database first: run `../database/schema.sql` as MySQL root, then create the app user (see the root README).
+1. Create the database first: run `../database/schema.sql` and then `../database/migrations/*.sql` (in order) as MySQL root, then create the app user (see the root README).
 2. In this folder: `npm install`
 3. Copy `.env.example` to `.env` and fill the values (DB user/password, a long random `JWT_SECRET`).
 4. Give the starter admin a password: `npm run create-admin -- --email admin@smartcampus.local` (prints a one-time password).
@@ -86,6 +86,48 @@ smart-campus-backend/
 | POST | /users/:userId/reset-password | new temporary password |
 | GET | /dashboard/counts | admin counts |
 
+### Platform admin  `/api/platform`  (platform admin only)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /permissions | the permission areas (users, academic, timetable, attendance, announcements, assignments) |
+| GET | /admins | every admin with status and permissions |
+| POST | /admins | create admin (email, fullName, phone, designation, permissions[], isPlatformAdmin) → temporaryPassword |
+| PUT | /admins/:id/permissions | replace permissions (permissions[], isPlatformAdmin) |
+| PATCH | /admins/:id/status | active / inactive (takes effect at once) |
+| POST | /admins/:id/reset-password | new temporary password |
+| GET | /activity | activity log from audit_logs (from, to, action, q, page, limit) + list of actions |
+
+Admin routes check the admin's permission for that area on every request (`adminCan(area)` in `middleware/auth.js`);
+platform admins have all. You cannot remove your own platform rights or deactivate yourself, and at least one active
+platform admin must remain. `/auth/login` and `/auth/me` return `isPlatformAdmin` and `permissions` for the menu.
+Without migration 002 every admin keeps full rights and `/platform` answers 503.
+
+### Leave requests  `/api/leave`
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| POST | / | student | multipart: fromDate, toDate, leaveType (medical/personal/event/other), reason, optional file `proof`; no overlap with an open/approved leave; start ≤ 30 days ago, end ≤ 90 days ahead |
+| GET | /mine | student | own requests with decision |
+| PATCH | /:id/withdraw | student | withdraw an open request |
+| GET | / | lecturer (students of sections they teach), admin (attendance permission) | `?status=open|approved|rejected|withdrawn` |
+| PATCH | /:id/decide | lecturer, admin | `{ decision: approve|reject, remarks }`; approve turns the student's absent marks in the range into excused (logged as "Leave #N approved"); classes marked later in the range start as excused |
+
+Without `database/migrations/003_leave_requests.sql` these routes answer 503 and marking works as before.
+
+### Internal marks  `/api/marks`  (lecturer: own classes · admin: "assignments" permission)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /assessments?teachingAssignmentId | assessments of a class with entered / absent / average / highest |
+| POST | /assessments | `{ teachingAssignmentId, title, kind (test/quiz/assignment/lab/other), maxMarks, heldOn }`; title unique per class |
+| GET | /assessments/:id | assessment + students with marks |
+| PUT | /assessments/:id | edit; maxMarks cannot go below the highest mark entered |
+| DELETE | /assessments/:id | delete with its marks (snapshot in audit_logs) |
+| PUT | /assessments/:id/marks | `{ marks: [{ studentId, marks|null, absent, remarks }] }`, 0..max |
+| PATCH | /assessments/:id/publish | `{ published }`; first publish notifies the students |
+| GET | /class/:teachingAssignmentId | students × assessments, totals, % (table / CSV) |
+| GET | /mine | student: own published marks per subject with class average |
+
+Needs `database/migrations/004_internal_marks.sql` (503 otherwise).
+
 ### Academic set-up  `/api/academic`  (GET: any user, write: admin)
 `/departments`, `/programs`, `/specializations`, `/academic-years`, `/sections`, `/subjects` each support GET `/`, GET `/:id`, POST `/`, PUT `/:id`, DELETE `/:id`.
 
@@ -105,6 +147,13 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | GET | / | all | student: own section, lecturer: his sections, admin: filters |
 | POST | / | admin | upload (file, sectionId, title, effectiveFrom, effectiveTo) |
 | PATCH | /:id/deactivate | admin | hide a timetable |
+| GET | /slots | all | weekly grid: student own section, lecturer own classes, admin all or ?sectionId |
+| POST | /slots | admin | add a class (teachingAssignmentId, dayOfWeek 1=Mon..7, periodNo, startTime, endTime, room) |
+| PUT | /slots/:id | admin | change a class (same body) |
+| DELETE | /slots/:id | admin | remove a class |
+
+Slot rules: end after start; one class per section per period; a lecturer cannot have two overlapping classes on a day (409).
+Without `database/migrations/001_timetable_slots.sql` the `/slots` routes answer 503 with that hint.
 
 ### Attendance  `/api/attendance`
 | Method | Path | Who | Purpose |
@@ -120,6 +169,9 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | PUT | /sessions/:id/records | lecturer | correct marks (history is logged by the DB trigger) |
 | GET | /report | lecturer, admin | % between dates: teachingAssignmentId, from, to, optional below (+ the rule) |
 | GET | /corrections | lecturer, admin | logged status changes (from, to, teachingAssignmentId); lecturer: own classes |
+| DELETE | /sessions/:id | lecturer, admin | delete a class marked by mistake; body `{ reason }`; blocked while an issue is open; snapshot in audit_logs |
+| POST | /report/notify-low | lecturer, admin | bell notification to every student below `below`% (default the minimum) between from and to, with their own % |
+| GET | /shortage | lecturer, admin | students below `below`% (default minimum) between from and to, per subject, with classes needed; `teachingAssignmentId` or `sectionId` (lecturer: own subjects only) |
 | GET | /register | lecturer, admin | day-wise register for teachingAssignmentId, from, to: sessions + per-student statuses and totals (approved rule) |
 | GET | /sessions/previous | lecturer, admin | most recent earlier class (teachingAssignmentId, date, period) with its marks, for "Copy last class" |
 | GET | /issues | lecturer, admin | issues of my classes (status filter) |
@@ -180,3 +232,19 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 - A deactivated user stays logged in until the token expires (`JWT_EXPIRES_IN`).
 - The hourly deadline reminder runs inside MySQL (event `ev_deadline_reminders`), so the event scheduler must be ON.
 - Scheduled announcements (future `publishAt`) are stored but notifications are sent only when published immediately.
+
+## 6. Tests
+
+- `npm test` — Node's built-in test runner (`test/`): attendance-rule maths, input validators, and HTTP checks for
+  login/roles/validation that stop before the database. Needs no database and does not read `.env`.
+- `npm run smoke` — end-to-end run of the whole workflow (`scripts/smoke-test.mjs`, ~100 checks, about 3 minutes).
+  It **creates data**, so use a throwaway database only:
+  1. Load `../database/schema.sql` and `../database/migrations/*.sql` into an empty MySQL instance.
+  2. Start the backend against it (e.g. `PORT=5099`), then `npm run create-admin -- --email admin@smartcampus.local`.
+  3. `API_URL=http://localhost:5099/api ADMIN_PW=<that password> npm run smoke` → expect "0 failed".
+
+### Editing attendance
+- Lecturers change their own classes for `ATTENDANCE_EDIT_WINDOW_DAYS` days (default 30, 0 = no limit) — from Mark
+  Attendance or by clicking a mark in the register (Attendance Report → View / edit register). Older classes: an admin.
+- Admins with the attendance permission can change or delete any class; a reason is required.
+- Every status change is logged (trigger → Corrections Log); deleted classes are kept as a snapshot in `audit_logs`.

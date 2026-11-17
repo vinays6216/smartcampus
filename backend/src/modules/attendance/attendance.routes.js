@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { z, id, dateStr, timeStr, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
 const upload = require('../../middleware/upload');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./attendance.controller');
 
 router.use(authenticate);
@@ -40,42 +40,59 @@ router.post('/sessions', authorize('lecturer'), validate({
   }),
 }), c.createSession);
 
-router.get('/sessions', authorize('lecturer', 'admin'), validate({
+router.get('/sessions', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ teachingAssignmentId: id, from: dateStr.optional(), to: dateStr.optional() }),
 }), c.listSessions);
 
 // before /sessions/:id so "previous" is not taken as an id
-router.get('/sessions/previous', authorize('lecturer', 'admin'), validate({
+router.get('/sessions/previous', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ teachingAssignmentId: id, date: dateStr, period: z.coerce.number().int().min(1).max(12).default(1) }),
 }), c.previousSession);
 
-router.get('/sessions/:id', authorize('lecturer', 'admin'), validate({ params: idParam }), c.getSession);
+router.get('/sessions/:id', authorize('lecturer', 'admin'), adminCan('attendance'), validate({ params: idParam }), c.getSession);
 
-router.put('/sessions/:id/records', authorize('lecturer'), validate({
+router.put('/sessions/:id/records', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   params: idParam,
   body: z.object({ records: z.array(record).min(1), reason: z.string().trim().max(255).optional() }),
 }), c.updateRecords);
 
-router.get('/report', authorize('lecturer', 'admin'), validate({
+// delete a class marked by mistake (wrong date / period / class); reason required, snapshot kept in audit_logs
+router.delete('/sessions/:id', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
+  params: idParam,
+  body: z.object({ reason: z.string().trim().min(3).max(255) }),
+}), c.deleteSession);
+
+router.get('/report', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({
     teachingAssignmentId: id, from: dateStr, to: dateStr,
     below: z.coerce.number().min(0).max(100).optional(),
   }),
 }), c.report);
 
-router.get('/register', authorize('lecturer', 'admin'), validate({
+router.post('/report/notify-low', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
+  body: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr, below: z.coerce.number().min(1).max(100).optional() }),
+}), c.notifyLow);
+
+router.get('/shortage', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
+  query: z.object({
+    teachingAssignmentId: id.optional(), sectionId: id.optional(), from: dateStr, to: dateStr,
+    below: z.coerce.number().min(1).max(100).optional(),
+  }),
+}), c.shortage);
+
+router.get('/register', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr }),
 }), c.register);
 
-router.get('/corrections', authorize('lecturer', 'admin'), validate({
+router.get('/corrections', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ from: dateStr.optional(), to: dateStr.optional(), teachingAssignmentId: id.optional() }),
 }), c.corrections);
 
-router.get('/issues', authorize('lecturer', 'admin'), validate({
+router.get('/issues', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   query: z.object({ status: z.enum(['open', 'approved', 'rejected', 'withdrawn']).optional() }),
 }), c.listIssues);
 
-router.patch('/issues/:id/resolve', authorize('lecturer', 'admin'), validate({
+router.patch('/issues/:id/resolve', authorize('lecturer', 'admin'), adminCan('attendance'), validate({
   params: idParam,
   body: z.object({ decision: z.enum(['approve', 'reject']), remarks: z.string().trim().max(500).optional() }),
 }), c.resolveIssue);

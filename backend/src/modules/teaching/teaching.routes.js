@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { z, id, dateStr, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./teaching.controller');
 
 router.use(authenticate);
@@ -10,11 +10,11 @@ router.get('/', authorize('admin', 'lecturer'), validate({
   query: z.object({ lecturerId: id.optional(), sectionId: id.optional(), subjectId: id.optional() }),
 }), c.list);
 
-router.post('/', authorize('admin'), validate({
+router.post('/', authorize('admin'), adminCan('academic'), validate({
   body: z.object({ lecturerId: id, subjectId: id, sectionId: id }),
 }), c.create);
 
-router.delete('/:id', authorize('admin'), validate({ params: idParam }), c.remove);
+router.delete('/:id', authorize('admin'), adminCan('academic'), validate({ params: idParam }), c.remove);
 
 router.get('/:id/roster', authorize('admin', 'lecturer'), validate({
   params: idParam,

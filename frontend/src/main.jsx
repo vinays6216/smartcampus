@@ -5,6 +5,10 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import './index.css';
+import './theme.css';
+import { applyTheme } from './utils/theme';
+
+applyTheme(); // light / dark before the first paint
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
