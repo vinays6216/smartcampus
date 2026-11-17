@@ -292,6 +292,52 @@ ok('F3 search by text', ((await call('GET', '/platform/activity?q=ATTENDANCE_SES
 ok('F3 paging', (await call('GET', '/platform/activity?limit=2&page=1', admin)).data?.length === 2 && (await call('GET', '/platform/activity?limit=2', admin)).pagination?.total >= 5);
 ok('F3 lecturer cannot read (403)', (await call('GET', '/platform/activity', lt)).status === 403);
 
+results.push('--- F5 today panel');
+const dowToday = ((new Date().getDay() + 6) % 7) + 1;
+const tSlot = await call('POST', '/timetables/slots', admin, { teachingAssignmentId: ta.data.id, dayOfWeek: dowToday, periodNo: 9, startTime: '18:00', endTime: '19:00', room: 'LH-9' });
+const tdS = await call('GET', '/dashboard/today', st);
+ok('F5 student: today\'s class from the timetable', tSlot.status === 201 && tdS.data?.dayOfWeek === dowToday && tdS.data.classes?.some((c) => c.periodNo === 9 && c.room === 'LH-9' && c.myStatus === null), JSON.stringify(tdS.data?.classes));
+ok('F5 student: warnings + next deadline fields', Array.isArray(tdS.data?.warnings) && 'nextDeadline' in (tdS.data || {}));
+const tdL = await call('GET', '/dashboard/today', lt);
+ok('F5 lecturer: own class today, not marked yet', tdL.data?.classes?.some((c) => c.periodNo === 9 && c.sessionId === null && c.sectionName === 'A'));
+const s9 = await call('POST', '/attendance/sessions', lt, { teachingAssignmentId: ta.data.id, sessionDate: today, periodNo: 9, records: [{ studentId: sid, status: 'absent' }] });
+ok('F5 after marking: lecturer sees Marked, student sees own mark', (await call('GET', '/dashboard/today', lt)).data?.classes?.find((c) => c.periodNo === 9)?.sessionId === s9.data?.sessionId
+  && (await call('GET', '/dashboard/today', st)).data?.classes?.find((c) => c.periodNo === 9)?.myStatus === 'absent');
+const warn = (await call('GET', '/dashboard/today', st)).data?.warnings || [];
+ok('F5 attendance warning with classes needed', warn.length === 1 && warn[0].classesToReach >= 1, JSON.stringify(warn));
+
+results.push('--- F6 shortage list');
+const sh = await call('GET', `/attendance/shortage?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}`, lt);
+ok('F6 class shortage lists the student with classes needed', sh.data?.length === 1 && sh.data[0].usn === 'USN001' && sh.data[0].classesToReach >= 1 && sh.filter?.below === 75, JSON.stringify(sh.data));
+ok('F6 section shortage (admin, all subjects)', (await call('GET', `/attendance/shortage?sectionId=${sec.data.id}&from=${today}&to=${today}`, admin)).data?.length === 1);
+ok('F6 lower limit -> nobody', (await call('GET', `/attendance/shortage?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}&below=10`, lt)).data?.length === 0);
+ok('F6 needs class or section (400)', (await call('GET', `/attendance/shortage?from=${today}&to=${today}`, lt)).status === 400);
+ok('F6 student blocked (403)', (await call('GET', `/attendance/shortage?sectionId=${sec.data.id}&from=${today}&to=${today}`, st)).status === 403);
+await call('DELETE', `/attendance/sessions/${s9.data.sessionId}`, lt, { reason: 'Test class removed' });
+await call('DELETE', `/timetables/slots/${tSlot.data.id}`, admin);
+
+results.push('--- F1 internal marks');
+const ia = await call('POST', '/marks/assessments', lt, { teachingAssignmentId: ta.data.id, title: 'IA-1', kind: 'test', maxMarks: 20, heldOn: today });
+ok('F1 lecturer creates assessment', ia.status === 201);
+ok('F1 same title twice (409)', (await call('POST', '/marks/assessments', lt, { teachingAssignmentId: ta.data.id, title: 'IA-1', maxMarks: 10 })).status === 409);
+ok('F1 marks above maximum (400)', (await call('PUT', `/marks/assessments/${ia.data.id}/marks`, lt, { marks: [{ studentId: sid, marks: 25 }] })).status === 400);
+ok('F1 save marks', (await call('PUT', `/marks/assessments/${ia.data.id}/marks`, lt, { marks: [{ studentId: sid, marks: 15, remarks: 'Good' }] })).status === 200);
+ok('F1 cannot lower max below highest mark (400)', (await call('PUT', `/marks/assessments/${ia.data.id}`, lt, { maxMarks: 10 })).status === 400);
+ok('F1 student sees nothing before publishing', (await call('GET', '/marks/mine', st)).data?.length === 0);
+ok('F1 publish', (await call('PATCH', `/marks/assessments/${ia.data.id}/publish`, lt, { published: true })).status === 200);
+const mm = (await call('GET', '/marks/mine', st)).data?.[0];
+ok('F1 student sees 15/20 (75%) with class average', mm?.total === 15 && mm.maxTotal === 20 && mm.percentage === 75 && mm.assessments?.[0]?.classAverage === 15, JSON.stringify(mm));
+ok('F1 student notified', ((await call('GET', '/notifications', st)).data || []).some((n) => n.title === 'Marks published: IT101 IA-1'));
+const quiz = await call('POST', '/marks/assessments', lt, { teachingAssignmentId: ta.data.id, title: 'Quiz 1', kind: 'quiz', maxMarks: 5 });
+await call('PUT', `/marks/assessments/${quiz.data.id}/marks`, lt, { marks: [{ studentId: sid, absent: true }] });
+const cs = await call('GET', `/marks/class/${ta.data.id}`, lt);
+ok('F1 class summary: IA-1 15, Quiz AB, total 15/25', cs.data?.maxTotal === 25 && JSON.stringify(cs.data.students?.[0]?.marks) === '[15,"AB"]' && cs.data.students[0].total === 15, JSON.stringify(cs.data?.students?.[0]));
+const al = (await call('GET', `/marks/assessments?teachingAssignmentId=${ta.data.id}`, lt)).data || [];
+ok('F1 list with stats', al.length === 2 && al.find((a) => a.title === 'IA-1')?.average === 15 && al.find((a) => a.title === 'Quiz 1')?.absent == 1);
+ok('F1 student blocked from staff routes (403)', (await call('GET', `/marks/assessments?teachingAssignmentId=${ta.data.id}`, st)).status === 403);
+ok('F1 delete assessment (audited)', (await call('DELETE', `/marks/assessments/${quiz.data.id}`, lt)).status === 200
+  && ((await call('GET', '/platform/activity?action=ASSESSMENT_DELETED', admin)).data || []).length === 1);
+
 results.push('--- P3 calendar edit, upcoming, scheduled announcements');
 const evs = (await call('GET', '/calendar', lt)).data || [];
 const lecEvent = evs.find((e) => e.createdBy && e.title === 'Extra class');

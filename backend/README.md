@@ -113,6 +113,21 @@ Without migration 002 every admin keeps full rights and `/platform` answers 503.
 
 Without `database/migrations/003_leave_requests.sql` these routes answer 503 and marking works as before.
 
+### Internal marks  `/api/marks`  (lecturer: own classes · admin: "assignments" permission)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /assessments?teachingAssignmentId | assessments of a class with entered / absent / average / highest |
+| POST | /assessments | `{ teachingAssignmentId, title, kind (test/quiz/assignment/lab/other), maxMarks, heldOn }`; title unique per class |
+| GET | /assessments/:id | assessment + students with marks |
+| PUT | /assessments/:id | edit; maxMarks cannot go below the highest mark entered |
+| DELETE | /assessments/:id | delete with its marks (snapshot in audit_logs) |
+| PUT | /assessments/:id/marks | `{ marks: [{ studentId, marks|null, absent, remarks }] }`, 0..max |
+| PATCH | /assessments/:id/publish | `{ published }`; first publish notifies the students |
+| GET | /class/:teachingAssignmentId | students × assessments, totals, % (table / CSV) |
+| GET | /mine | student: own published marks per subject with class average |
+
+Needs `database/migrations/004_internal_marks.sql` (503 otherwise).
+
 ### Academic set-up  `/api/academic`  (GET: any user, write: admin)
 `/departments`, `/programs`, `/specializations`, `/academic-years`, `/sections`, `/subjects` each support GET `/`, GET `/:id`, POST `/`, PUT `/:id`, DELETE `/:id`.
 
@@ -156,6 +171,7 @@ Without `database/migrations/001_timetable_slots.sql` the `/slots` routes answer
 | GET | /corrections | lecturer, admin | logged status changes (from, to, teachingAssignmentId); lecturer: own classes |
 | DELETE | /sessions/:id | lecturer, admin | delete a class marked by mistake; body `{ reason }`; blocked while an issue is open; snapshot in audit_logs |
 | POST | /report/notify-low | lecturer, admin | bell notification to every student below `below`% (default the minimum) between from and to, with their own % |
+| GET | /shortage | lecturer, admin | students below `below`% (default minimum) between from and to, per subject, with classes needed; `teachingAssignmentId` or `sectionId` (lecturer: own subjects only) |
 | GET | /register | lecturer, admin | day-wise register for teachingAssignmentId, from, to: sessions + per-student statuses and totals (approved rule) |
 | GET | /sessions/previous | lecturer, admin | most recent earlier class (teachingAssignmentId, date, period) with its marks, for "Copy last class" |
 | GET | /issues | lecturer, admin | issues of my classes (status filter) |
