@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "test": "node --test test/",
+    "smoke": "node scripts/smoke-test.mjs"
   },
   "engines": {
     "node": ">=18"

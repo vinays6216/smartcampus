@@ -4,7 +4,7 @@ REST API for the Smart Campus Management System. It matches the `smart_campus` M
 
 ## 1. Run it
 
-1. Create the database first: run `../database/schema.sql` as MySQL root, then create the app user (see the root README).
+1. Create the database first: run `../database/schema.sql` and then `../database/migrations/*.sql` as MySQL root, then create the app user (see the root README).
 2. In this folder: `npm install`
 3. Copy `.env.example` to `.env` and fill the values (DB user/password, a long random `JWT_SECRET`).
 4. Give the starter admin a password: `npm run create-admin -- --email admin@smartcampus.local` (prints a one-time password).
@@ -105,6 +105,13 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | GET | / | all | student: own section, lecturer: his sections, admin: filters |
 | POST | / | admin | upload (file, sectionId, title, effectiveFrom, effectiveTo) |
 | PATCH | /:id/deactivate | admin | hide a timetable |
+| GET | /slots | all | weekly grid: student own section, lecturer own classes, admin all or ?sectionId |
+| POST | /slots | admin | add a class (teachingAssignmentId, dayOfWeek 1=Mon..7, periodNo, startTime, endTime, room) |
+| PUT | /slots/:id | admin | change a class (same body) |
+| DELETE | /slots/:id | admin | remove a class |
+
+Slot rules: end after start; one class per section per period; a lecturer cannot have two overlapping classes on a day (409).
+Without `database/migrations/001_timetable_slots.sql` the `/slots` routes answer 503 with that hint.
 
 ### Attendance  `/api/attendance`
 | Method | Path | Who | Purpose |
@@ -120,6 +127,7 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | PUT | /sessions/:id/records | lecturer | correct marks (history is logged by the DB trigger) |
 | GET | /report | lecturer, admin | % between dates: teachingAssignmentId, from, to, optional below (+ the rule) |
 | GET | /corrections | lecturer, admin | logged status changes (from, to, teachingAssignmentId); lecturer: own classes |
+| POST | /report/notify-low | lecturer, admin | bell notification to every student below `below`% (default the minimum) between from and to, with their own % |
 | GET | /register | lecturer, admin | day-wise register for teachingAssignmentId, from, to: sessions + per-student statuses and totals (approved rule) |
 | GET | /sessions/previous | lecturer, admin | most recent earlier class (teachingAssignmentId, date, period) with its marks, for "Copy last class" |
 | GET | /issues | lecturer, admin | issues of my classes (status filter) |
@@ -180,3 +188,13 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 - A deactivated user stays logged in until the token expires (`JWT_EXPIRES_IN`).
 - The hourly deadline reminder runs inside MySQL (event `ev_deadline_reminders`), so the event scheduler must be ON.
 - Scheduled announcements (future `publishAt`) are stored but notifications are sent only when published immediately.
+
+## 6. Tests
+
+- `npm test` — Node's built-in test runner (`test/`): attendance-rule maths, input validators, and HTTP checks for
+  login/roles/validation that stop before the database. Needs no database and does not read `.env`.
+- `npm run smoke` — end-to-end run of the whole workflow (`scripts/smoke-test.mjs`, ~100 checks, about 3 minutes).
+  It **creates data**, so use a throwaway database only:
+  1. Load `../database/schema.sql` and `../database/migrations/*.sql` into an empty MySQL instance.
+  2. Start the backend against it (e.g. `PORT=5099`), then `npm run create-admin -- --email admin@smartcampus.local`.
+  3. `API_URL=http://localhost:5099/api ADMIN_PW=<that password> npm run smoke` → expect "0 failed".

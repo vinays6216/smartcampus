@@ -52,7 +52,11 @@ Run it as the MySQL root user (MySQL Workbench: File → Open SQL Script → run
 
 ```powershell
 mysql -u root -p < database/schema.sql
+mysql -u root -p < database/migrations/001_timetable_slots.sql
 ```
+
+`database/migrations/` holds additions made after the original schema (run each file once, in order; they are safe to run again).
+`001_timetable_slots.sql` adds the weekly timetable grid. Existing databases only need the migration files.
 
 Then, still as root, turn on the event scheduler (deadline reminders) and create a limited account for the app:
 
@@ -142,6 +146,8 @@ Run these commands from the relevant package directory.
 |---|---|---|
 | `backend` | `npm run dev` | Start API with automatic restart |
 | `backend` | `npm start` | Start API |
+| `backend` | `npm test` | Unit and route tests (no database needed) |
+| `backend` | `npm run smoke` | End-to-end test of the whole workflow — **throwaway database only** (see backend/README.md) |
 | `backend` | `npm run create-admin -- --email …` | Set the starter admin's password (or `--name …` to add an admin) |
 | repo root | `start-dev.cmd` / `.\start-dev.ps1` | Start backend + frontend in two windows |
 | `frontend` | `npm run dev` | Start Vite development server |
