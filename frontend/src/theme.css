@@ -244,3 +244,6 @@ tbody tr.row-low, tbody tr.row-low:hover { background: var(--sc-err-bg); }
   .user-text { display: none; }
   .topbar-title .crumb, .topbar-title .crumb-sep { display: none; }
 }
+
+/* activity log details */
+.log-json { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--sc-surface-2); color: var(--sc-text-2); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }

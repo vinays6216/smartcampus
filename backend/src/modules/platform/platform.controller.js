@@ -116,3 +116,41 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   await audit(req, 'ADMIN_PASSWORD_RESET', 'admin', adminId);
   res.json({ success: true, data: { temporaryPassword: password } });
 });
+
+// Activity log (audit_logs): who did what and when. Filters: from, to, action, userId, q (name / email / action text).
+exports.activity = asyncHandler(async (req, res) => {
+  const { from, to, action, q } = req.query;
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 50;
+  if (from && to && from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  const where = ['1=1'];
+  const params = [];
+  if (from) { where.push('al.created_at >= ?'); params.push(`${from} 00:00:00`); }
+  if (to) { where.push('al.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(to); }
+  if (action) { where.push('al.action = ?'); params.push(action); }
+  if (q) {
+    where.push('(u.full_name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.entity_type LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like, like);
+  }
+  const sqlWhere = where.join(' AND ');
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE ${sqlWhere}`, params
+  );
+  const [rows] = await pool.query(
+    `SELECT al.id, al.created_at, al.action, al.entity_type, al.entity_id, al.old_values, al.new_values, al.ip_address,
+            u.full_name AS user_name, u.email AS user_email, u.role AS user_role
+       FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id
+      WHERE ${sqlWhere}
+      ORDER BY al.created_at DESC, al.id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, limit, (page - 1) * limit]
+  );
+  const [actions] = await pool.query('SELECT DISTINCT action FROM audit_logs ORDER BY action');
+  res.json({
+    success: true,
+    data: rows,
+    actions: actions.map((a) => a.action),
+    pagination: { page, limit, total },
+  });
+});

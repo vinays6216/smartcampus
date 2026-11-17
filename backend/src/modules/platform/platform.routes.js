@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { z, id, idParam } = require('../../utils/zodHelpers');
+const { z, id, idParam, dateStr } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
 const { authenticate, platformOnly } = require('../../middleware/auth');
 const { ALL } = require('../../utils/permissions');
@@ -12,6 +12,14 @@ const permissions = z.array(z.enum(ALL)).max(ALL.length).default([]);
 
 router.get('/permissions', c.permissions);
 router.get('/admins', c.list);
+
+router.get('/activity', validate({
+  query: z.object({
+    from: dateStr.optional(), to: dateStr.optional(),
+    action: z.string().trim().max(60).optional(), q: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(200).default(50),
+  }),
+}), c.activity);
 
 router.post('/admins', validate({
   body: z.object({

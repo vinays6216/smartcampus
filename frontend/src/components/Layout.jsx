@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, Bell, BookOpen, Building2, CalendarDays, CalendarRange, ChevronDown, ClipboardCheck, ClipboardList,
+  AlertTriangle, Bell, CalendarOff, History, BookOpen, Building2, CalendarDays, CalendarRange, ChevronDown, ClipboardCheck, ClipboardList,
   FileText, GraduationCap, KeyRound, LayoutDashboard, LineChart, LogOut, Megaphone, Menu, ReceiptText, ShieldCheck,
   UserRound, UsersRound,
 } from 'lucide-react';
@@ -13,24 +13,25 @@ import ThemeToggle from './ThemeToggle';
 const MENUS = {
   student: [
     ['Overview', [['/', LayoutDashboard, 'Dashboard'], ['/profile', UserRound, 'My Profile']]],
-    ['Academics', [['/attendance', ClipboardCheck, 'Attendance'], ['/assignments', FileText, 'Assignments'],
+    ['Academics', [['/attendance', ClipboardCheck, 'Attendance'], ['/leave', CalendarOff, 'Leave'], ['/assignments', FileText, 'Assignments'],
       ['/timetable', CalendarRange, 'Time Table'], ['/materials', BookOpen, 'Study Materials']]],
     ['Campus', [['/announcements', Megaphone, 'Announcements'], ['/calendar', CalendarDays, 'Calendar']]],
   ],
   lecturer: [
     ['Overview', [['/', LayoutDashboard, 'Dashboard']]],
     ['Attendance', [['/mark-attendance', ClipboardCheck, 'Mark Attendance'], ['/attendance-report', LineChart, 'Attendance Report'],
-      ['/attendance-issues', AlertTriangle, 'Attendance Issues'], ['/attendance-corrections', ReceiptText, 'Corrections Log']]],
+      ['/attendance-issues', AlertTriangle, 'Attendance Issues'], ['/leave-requests', CalendarOff, 'Leave Requests'],
+      ['/attendance-corrections', ReceiptText, 'Corrections Log']]],
     ['Teaching', [['/manage-assignments', FileText, 'Assignments'], ['/timetable', CalendarRange, 'Time Table'], ['/materials', BookOpen, 'Study Materials']]],
     ['Campus', [['/announcements', Megaphone, 'Announcements'], ['/calendar', CalendarDays, 'Calendar']]],
   ],
   admin: [
-    ['Overview', [['/', LayoutDashboard, 'Dashboard'], ['/platform', ShieldCheck, 'Platform Admins', 'platform']]],
+    ['Overview', [['/', LayoutDashboard, 'Dashboard'], ['/platform', ShieldCheck, 'Platform Admins', 'platform'], ['/activity', History, 'Activity Log', 'platform']]],
     ['People', [['/students', GraduationCap, 'Students', 'users'], ['/lecturers', UsersRound, 'Lecturers', 'users']]],
     ['Academics', [['/academic', Building2, 'Academic Setup', 'academic'], ['/teaching', ClipboardList, 'Teaching Assignments', 'academic'],
       ['/timetable', CalendarRange, 'Time Tables'], ['/manage-assignments', FileText, 'Assignments', 'assignments'], ['/materials', BookOpen, 'Study Materials']]],
     ['Attendance', [['/attendance-report', LineChart, 'Attendance Report', 'attendance'], ['/attendance-issues', AlertTriangle, 'Attendance Issues', 'attendance'],
-      ['/attendance-corrections', ReceiptText, 'Corrections Log', 'attendance']]],
+      ['/leave-requests', CalendarOff, 'Leave Requests', 'attendance'], ['/attendance-corrections', ReceiptText, 'Corrections Log', 'attendance']]],
     ['Campus', [['/announcements', Megaphone, 'Announcements'], ['/calendar', CalendarDays, 'Calendar']]],
   ],
 };
