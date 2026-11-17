@@ -5,16 +5,27 @@ import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/FormModal';
 import FileButton from '../../components/FileButton';
 import { Async, Badge, Empty, PageHeader, PercentBar, StatCard, Tabs } from '../../components/ui';
-import { fmtDate, fmtDateTime } from '../../utils/format';
+import { fmtDate, fmtDateTime, today } from '../../utils/format';
 import { clean, errMsg, toFormData } from '../../utils/helpers';
+
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA'); };
+const PRESETS = [
+  { key: 'all', label: 'All classes', range: () => ({ from: '', to: '' }) },
+  { key: 'month', label: 'This month', range: () => ({ from: monthStart(), to: today() }) },
+  { key: '30', label: 'Last 30 days', range: () => ({ from: daysAgo(29), to: today() }) },
+  { key: '7', label: 'Last 7 days', range: () => ({ from: daysAgo(6), to: today() }) },
+];
 
 export default function Attendance() {
   const toast = useToast();
   const [tab, setTab] = useState('days');
   const [filters, setFilters] = useState({ from: '', to: '', subjectCode: '', status: '' });
+  const [range, setRange] = useState({ from: '', to: '' }); // date range for the percentage summary
   const [target, setTarget] = useState(null); // the absent entry the student is raising an issue for
 
-  const summary = useFetch(() => get('/attendance/student/summary'), []);
+  const rangeInvalid = range.from && range.to && range.from > range.to;
+  const summary = useFetch(() => (rangeInvalid ? Promise.resolve(null) : get('/attendance/student/summary', clean(range))), [range.from, range.to]);
   const detail = useFetch(() => get('/attendance/student/detail', clean(filters)), [filters]);
   const issues = useFetch(() => get('/attendance/issues/mine'), []);
 
@@ -36,17 +47,36 @@ export default function Attendance() {
     <>
       <PageHeader title="My Attendance" subtitle="See the days you attended or missed, and raise an issue if you were marked absent by mistake" />
 
+      <div className="card">
+        <div className="filters">
+          <div><label>Percentage from</label><input type="date" value={range.from} max={range.to || undefined} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
+          <div><label>To</label><input type="date" value={range.to} min={range.from || undefined} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
+          <div className="btn-group" style={{ alignSelf: 'flex-end' }}>
+            {PRESETS.map((p) => (
+              <button key={p.key} type="button" className="btn btn-sm" onClick={() => setRange(p.range())}>{p.label}</button>
+            ))}
+          </div>
+        </div>
+        {rangeInvalid && <div className="alert alert-error">"From" date must be on or before the "To" date.</div>}
+        {s?.rule && (
+          <div className="alert alert-info">
+            <strong>How it is calculated:</strong> {s.rule.text}. Minimum required: {s.rule.minRequiredPercent}%.
+            {' '}Showing {s.from || s.to ? `${s.from ? fmtDate(s.from) : 'the first class'} to ${s.to ? fmtDate(s.to) : 'today'}` : 'all classes so far'}.
+          </div>
+        )}
+      </div>
+
       <Async f={summary}>
         {s && (
           <>
             <div className="grid">
-              <StatCard label="Overall attendance" value={s.overallPercentage != null ? `${s.overallPercentage}%` : '-'}
+              <StatCard label={s.from || s.to ? 'Attendance in this period' : 'Overall attendance'} value={s.overallPercentage != null ? `${s.overallPercentage}%` : '-'}
                 tone={s.overallPercentage != null && s.overallPercentage < s.minRequiredPercent ? 'red' : 'green'} />
               <StatCard label="Minimum required" value={`${s.minRequiredPercent}%`} tone="amber" />
             </div>
             <div className="card">
               <h2>Subject-wise attendance</h2>
-              {!s.subjects.length && <Empty>No attendance has been marked yet.</Empty>}
+              {!s.subjects.length && <Empty>{s.from || s.to ? 'No classes in this period.' : 'No attendance has been marked yet.'}</Empty>}
               {!!s.subjects.length && (
                 <div className="table-wrap">
                   <table>
@@ -132,6 +162,10 @@ export default function Attendance() {
                   </div>
                 </div>
                 <div>Reason: {i.reason}</div>
+                {i.status === 'approved' && (
+                  <div className="text-green">Corrected to <strong>{i.currentStatus}</strong> on {fmtDateTime(i.resolvedAt)} by {i.resolvedByName}. The change is logged.</div>
+                )}
+                {i.status === 'rejected' && <div className="muted">Rejected on {fmtDateTime(i.resolvedAt)} by {i.resolvedByName}.</div>}
                 {i.resolutionRemarks && <div className="muted">Lecturer remarks: {i.resolutionRemarks}</div>}
               </div>
             ))}

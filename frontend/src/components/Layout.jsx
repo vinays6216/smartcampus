@@ -10,13 +10,13 @@ const MENUS = {
   ],
   lecturer: [
     ['/', '📊', 'Dashboard'], ['/mark-attendance', '✅', 'Mark Attendance'], ['/attendance-report', '📈', 'Attendance Report'],
-    ['/attendance-issues', '⚠️', 'Attendance Issues'], ['/manage-assignments', '📝', 'Assignments'], ['/timetable', '🗓️', 'Time Table'],
+    ['/attendance-issues', '⚠️', 'Attendance Issues'], ['/attendance-corrections', '🧾', 'Corrections Log'], ['/manage-assignments', '📝', 'Assignments'], ['/timetable', '🗓️', 'Time Table'],
     ['/materials', '📚', 'Study Materials'], ['/announcements', '📢', 'Announcements'], ['/calendar', '📅', 'Calendar'],
   ],
   admin: [
     ['/', '📊', 'Dashboard'], ['/students', '🎓', 'Students'], ['/lecturers', '👨‍🏫', 'Lecturers'], ['/academic', '🏛️', 'Academic Setup'],
     ['/teaching', '📋', 'Teaching Assignments'], ['/timetable', '🗓️', 'Time Tables'], ['/manage-assignments', '📝', 'Assignments'],
-    ['/attendance-report', '📈', 'Attendance Report'], ['/attendance-issues', '⚠️', 'Attendance Issues'],
+    ['/attendance-report', '📈', 'Attendance Report'], ['/attendance-issues', '⚠️', 'Attendance Issues'], ['/attendance-corrections', '🧾', 'Corrections Log'],
     ['/materials', '📚', 'Study Materials'], ['/announcements', '📢', 'Announcements'], ['/calendar', '📅', 'Calendar'],
   ],
 };

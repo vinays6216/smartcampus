@@ -50,6 +50,22 @@ export default function MarkAttendance() {
   const setRemark = (id, remarks) => setMarks((m) => ({ ...m, [id]: { ...m[id], remarks } }));
   const markAll = (status) => setMarks(Object.fromEntries(students.map((s) => [s.studentId, { status, remarks: '' }])));
 
+  // copy the marks of the most recent earlier class (students not in that class stay present)
+  const [copying, setCopying] = useState(false);
+  const copyPrevious = async () => {
+    setCopying(true);
+    try {
+      const prev = (await get('/attendance/sessions/previous', { teachingAssignmentId: taId, date, period })).data;
+      if (!prev) { toast.error('No earlier class found to copy'); return; }
+      const byId = new Map(prev.records.map((r) => [r.studentId, r]));
+      setMarks(Object.fromEntries(students.map((s) => {
+        const r = byId.get(s.studentId);
+        return [s.studentId, { status: r ? r.status : 'present', remarks: '' }];
+      })));
+      toast.success(`Copied marks from ${fmtDate(prev.sessionDate)}, period ${prev.periodNo}. Check and save.`);
+    } catch (e) { toast.error(errMsg(e)); } finally { setCopying(false); }
+  };
+
   const counts = STATUSES.map((s) => [s, Object.values(marks).filter((m) => m.status === s).length]);
 
   const toRecord = ([studentId, m]) => ({ studentId: Number(studentId), status: m.status, ...(m.remarks ? { remarks: m.remarks } : {}) });
@@ -112,6 +128,7 @@ export default function MarkAttendance() {
               <div className="btn-group">
                 <button className="btn btn-sm" onClick={() => markAll('present')}>All present</button>
                 <button className="btn btn-sm" onClick={() => markAll('absent')}>All absent</button>
+                {!existingId && <button className="btn btn-sm" disabled={copying} onClick={copyPrevious}>{copying ? 'Copying...' : 'Copy last class'}</button>}
               </div>
               <div className="btn-group">{counts.map(([s, n]) => <Badge key={s} value={s}>{s}: {n}</Badge>)}</div>
             </div>

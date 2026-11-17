@@ -1040,6 +1040,7 @@ tbody tr.clickable:hover {
 /* ---------- Misc: muted, text-red, row helpers ---------- */
 .muted { color: var(--gray-500); font-size: .82rem; }
 .text-red { color: var(--red-dark); font-weight: 600; }
+.text-green { color: var(--green-dk); }
 
 .row {
   display: flex;

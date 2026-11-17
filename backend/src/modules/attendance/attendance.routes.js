@@ -11,7 +11,9 @@ const status = z.enum(['present', 'absent', 'late', 'excused']);
 const record = z.object({ studentId: id, status, remarks: z.string().trim().max(255).optional() });
 
 // ---------------- Student ----------------
-router.get('/student/summary', authorize('student'), c.mySummary);
+router.get('/student/summary', authorize('student'), validate({
+  query: z.object({ from: dateStr.optional(), to: dateStr.optional() }),
+}), c.mySummary);
 
 router.get('/student/detail', authorize('student'), validate({
   query: z.object({ from: dateStr.optional(), to: dateStr.optional(), subjectCode: z.string().optional(), status: status.optional() }),
@@ -42,6 +44,11 @@ router.get('/sessions', authorize('lecturer', 'admin'), validate({
   query: z.object({ teachingAssignmentId: id, from: dateStr.optional(), to: dateStr.optional() }),
 }), c.listSessions);
 
+// before /sessions/:id so "previous" is not taken as an id
+router.get('/sessions/previous', authorize('lecturer', 'admin'), validate({
+  query: z.object({ teachingAssignmentId: id, date: dateStr, period: z.coerce.number().int().min(1).max(12).default(1) }),
+}), c.previousSession);
+
 router.get('/sessions/:id', authorize('lecturer', 'admin'), validate({ params: idParam }), c.getSession);
 
 router.put('/sessions/:id/records', authorize('lecturer'), validate({
@@ -55,6 +62,14 @@ router.get('/report', authorize('lecturer', 'admin'), validate({
     below: z.coerce.number().min(0).max(100).optional(),
   }),
 }), c.report);
+
+router.get('/register', authorize('lecturer', 'admin'), validate({
+  query: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr }),
+}), c.register);
+
+router.get('/corrections', authorize('lecturer', 'admin'), validate({
+  query: z.object({ from: dateStr.optional(), to: dateStr.optional(), teachingAssignmentId: id.optional() }),
+}), c.corrections);
 
 router.get('/issues', authorize('lecturer', 'admin'), validate({
   query: z.object({ status: z.enum(['open', 'approved', 'rejected', 'withdrawn']).optional() }),

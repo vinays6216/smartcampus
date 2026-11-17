@@ -6,18 +6,34 @@ const { todayLocal } = require('../../utils/sql');
 const { assertTeaches } = require('../../utils/ownership');
 const { saveFileRecord } = require('../../utils/files');
 const { notifyUsers } = require('../../utils/notify');
+const { attendanceRule, RULE_SQL } = require('../../utils/attendanceRule');
 
 // =====================================================================
 //  STUDENT
 // =====================================================================
 
-// Subject-wise summary + overall percentage
+// Subject-wise summary + overall percentage, optionally for a date range (?from=YYYY-MM-DD&to=YYYY-MM-DD).
+// Uses the approved rule (see utils/attendanceRule.js); without a range it covers every class so far.
 exports.mySummary = asyncHandler(async (req, res) => {
+  const { from, to } = req.query;
+  if (from && to && from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  const where = ['ar.student_id = ?'];
+  const params = [req.user.profileId];
+  if (from) { where.push('ses.session_date >= ?'); params.push(from); }
+  if (to) { where.push('ses.session_date <= ?'); params.push(to); }
+
   const [subjects] = await pool.query(
-    `SELECT teaching_assignment_id, subject_code, subject_name, total_classes, attended_classes,
-            absent_classes, attendance_percentage
-       FROM v_student_subject_attendance WHERE student_id = ? ORDER BY subject_code`,
-    [req.user.profileId]
+    `SELECT ta.id AS teaching_assignment_id, sub.code AS subject_code, sub.name AS subject_name,
+            ${RULE_SQL.total} AS total_classes, ${RULE_SQL.attended} AS attended_classes,
+            ${RULE_SQL.absent} AS absent_classes, ${RULE_SQL.percentage} AS attendance_percentage
+       FROM attendance_records ar
+       JOIN attendance_sessions ses ON ses.id = ar.session_id
+       JOIN teaching_assignments ta ON ta.id = ses.teaching_assignment_id
+       JOIN subjects sub            ON sub.id = ta.subject_id
+      WHERE ${where.join(' AND ')}
+      GROUP BY ta.id, sub.code, sub.name
+      ORDER BY sub.code`,
+    params
   );
   const total = subjects.reduce((n, s) => n + Number(s.total_classes), 0);
   const attended = subjects.reduce((n, s) => n + Number(s.attended_classes), 0);
@@ -25,6 +41,9 @@ exports.mySummary = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     data: {
+      from: from || null,
+      to: to || null,
+      rule: attendanceRule(),
       minRequiredPercent: env.attendanceMinPercent,
       overallPercentage: overall,
       subjects: subjects.map((s) => ({ ...s, belowMinimum: s.attendance_percentage !== null && s.attendance_percentage < env.attendanceMinPercent })),
@@ -99,12 +118,15 @@ exports.raiseIssue = asyncHandler(async (req, res) => {
 exports.myIssues = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
     `SELECT ai.id, ai.status, ai.reason, ai.proof_file_id, ai.resolution_remarks, ai.raised_at, ai.resolved_at,
-            ses.session_date, ses.period_no, sub.code AS subject_code, sub.name AS subject_name
+            ses.session_date, ses.period_no, sub.code AS subject_code, sub.name AS subject_name,
+            COALESCE(ru.full_name, 'Admin') AS resolved_by_name, ar.status AS current_status
        FROM attendance_issues ai
        JOIN attendance_records ar ON ar.id = ai.attendance_record_id
        JOIN attendance_sessions ses ON ses.id = ar.session_id
        JOIN teaching_assignments ta ON ta.id = ses.teaching_assignment_id
        JOIN subjects sub ON sub.id = ta.subject_id
+       LEFT JOIN lecturers rl ON rl.id = ai.resolved_by
+       LEFT JOIN users ru ON ru.id = rl.user_id
       WHERE ai.student_id = ?
       ORDER BY ai.raised_at DESC`,
     [req.user.profileId]
@@ -240,11 +262,121 @@ exports.updateRecords = asyncHandler(async (req, res) => {
 // Percentage report between two dates; ?below=75 lists only students under 75%
 exports.report = asyncHandler(async (req, res) => {
   const { teachingAssignmentId, from, to, below } = req.query;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
   await assertTeaches(req.user, teachingAssignmentId);
   const [result] = await pool.query('CALL sp_attendance_report(?, ?, ?, ?)', [
     teachingAssignmentId, from, to, below === undefined ? null : below,
   ]);
-  res.json({ success: true, data: result[0], filter: { from, to, belowPercent: below ?? null } });
+  res.json({ success: true, data: result[0], filter: { from, to, belowPercent: below ?? null }, rule: attendanceRule() });
+});
+
+// Day-wise register: one row per student, one column per class held between two dates.
+// Cells hold the status (present/absent/late/excused) or null when the student had no record for that class.
+// Totals use the approved rule. Lecturer: own classes only. Admin: any class.
+exports.register = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, from, to } = req.query;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  await assertTeaches(req.user, teachingAssignmentId);
+
+  const [sessions] = await pool.query(
+    `SELECT id, session_date, period_no, topic FROM attendance_sessions
+      WHERE teaching_assignment_id = ? AND session_date BETWEEN ? AND ?
+      ORDER BY session_date, period_no`,
+    [teachingAssignmentId, from, to]
+  );
+  // active students of the section + anybody who has a record in the range (e.g. since moved or inactive)
+  const [students] = await pool.query(
+    `SELECT s.id AS student_id, s.usn, u.full_name, s.status AS student_status
+       FROM students s JOIN users u ON u.id = s.user_id
+      WHERE (s.status = 'active' AND s.section_id = (SELECT section_id FROM teaching_assignments WHERE id = ?))
+         OR s.id IN (SELECT ar.student_id FROM attendance_records ar
+                       JOIN attendance_sessions ses ON ses.id = ar.session_id
+                      WHERE ses.teaching_assignment_id = ? AND ses.session_date BETWEEN ? AND ?)
+      ORDER BY s.usn`,
+    [teachingAssignmentId, teachingAssignmentId, from, to]
+  );
+  const [records] = sessions.length
+    ? await pool.query('SELECT session_id, student_id, status FROM attendance_records WHERE session_id IN (?)', [sessions.map((s) => s.id)])
+    : [[]];
+
+  const byStudent = new Map();
+  for (const r of records) {
+    if (!byStudent.has(r.student_id)) byStudent.set(r.student_id, new Map());
+    byStudent.get(r.student_id).set(r.session_id, r.status);
+  }
+  const rows = students.map((st) => {
+    const marks = byStudent.get(st.student_id) || new Map();
+    const statuses = sessions.map((ses) => marks.get(ses.id) || null);
+    const held = statuses.filter((x) => x && x !== 'excused').length;
+    const attended = statuses.filter((x) => x === 'present' || x === 'late').length;
+    return {
+      student_id: st.student_id, usn: st.usn, full_name: st.full_name, student_status: st.student_status,
+      statuses,
+      total_classes: held,
+      attended_classes: attended,
+      absent_classes: statuses.filter((x) => x === 'absent').length,
+      excused_classes: statuses.filter((x) => x === 'excused').length,
+      attendance_percentage: held ? Math.round((attended / held) * 10000) / 100 : null,
+    };
+  });
+  res.json({ success: true, data: { from, to, sessions, students: rows }, rule: attendanceRule() });
+});
+
+// Marks of the most recent class of this teaching assignment before a date/period, so the lecturer can copy them.
+exports.previousSession = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, date, period } = req.query;
+  await assertTeaches(req.user, teachingAssignmentId);
+  const [rows] = await pool.query(
+    `SELECT id FROM attendance_sessions
+      WHERE teaching_assignment_id = ? AND (session_date < ? OR (session_date = ? AND period_no < ?))
+      ORDER BY session_date DESC, period_no DESC LIMIT 1`,
+    [teachingAssignmentId, date, date, period]
+  );
+  if (!rows[0]) return res.json({ success: true, data: null });
+  const session = await getSessionOrFail(rows[0].id);
+  const [records] = await pool.query(
+    'SELECT student_id, status, remarks FROM attendance_records WHERE session_id = ?',
+    [session.id]
+  );
+  res.json({ success: true, data: { id: session.id, session_date: session.session_date, period_no: session.period_no, topic: session.topic, records } });
+});
+
+// Correction log: every logged attendance status change (trigger -> attendance_record_history).
+// Lecturer: own classes only. Admin: everything. Filters: from / to (date of the change), teachingAssignmentId.
+exports.corrections = asyncHandler(async (req, res) => {
+  const { from, to, teachingAssignmentId } = req.query;
+  if (from && to && from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  const where = ['1=1'];
+  const params = [];
+  if (req.user.role === 'lecturer') { where.push('ta.lecturer_id = ?'); params.push(req.user.profileId); }
+  if (teachingAssignmentId) { where.push('ta.id = ?'); params.push(teachingAssignmentId); }
+  if (from) { where.push('h.changed_at >= ?'); params.push(`${from} 00:00:00`); }
+  if (to) { where.push('h.changed_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(to); }
+
+  const [rows] = await pool.query(
+    `SELECT h.id, h.changed_at, h.old_status, h.new_status, h.reason,
+            cu.full_name AS changed_by_name, cu.role AS changed_by_role,
+            ar.id AS attendance_record_id, ses.session_date, ses.period_no,
+            sub.code AS subject_code, sub.name AS subject_name, sec.name AS section_name,
+            s.usn, su.full_name AS student_name,
+            (SELECT ai.id FROM attendance_issues ai
+              WHERE ai.attendance_record_id = ar.id AND ai.status = 'approved'
+              ORDER BY ai.resolved_at DESC LIMIT 1) AS issue_id
+       FROM attendance_record_history h
+       JOIN attendance_records ar   ON ar.id = h.attendance_record_id
+       JOIN attendance_sessions ses ON ses.id = ar.session_id
+       JOIN teaching_assignments ta ON ta.id = ses.teaching_assignment_id
+       JOIN subjects sub            ON sub.id = ta.subject_id
+       JOIN sections sec            ON sec.id = ta.section_id
+       JOIN students s              ON s.id = ar.student_id
+       JOIN users su                ON su.id = s.user_id
+       LEFT JOIN users cu           ON cu.id = h.changed_by_user_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY h.changed_at DESC, h.id DESC
+      LIMIT 500`,
+    params
+  );
+  res.json({ success: true, data: rows });
 });
 
 // Issues raised by students of the lecturer's classes (admin sees all)

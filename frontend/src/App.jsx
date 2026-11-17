@@ -22,6 +22,7 @@ import StudentProfile from './pages/student/Profile';
 import MarkAttendance from './pages/lecturer/MarkAttendance';
 import AttendanceReport from './pages/lecturer/AttendanceReport';
 import AttendanceIssues from './pages/lecturer/AttendanceIssues';
+import AttendanceCorrections from './pages/lecturer/AttendanceCorrections';
 import ManageAssignments from './pages/lecturer/ManageAssignments';
 import Submissions from './pages/lecturer/Submissions';
 
@@ -66,6 +67,7 @@ export default function App() {
           <Route element={<ProtectedRoute roles={['lecturer', 'admin']} />}>
             <Route path="/attendance-report" element={<AttendanceReport />} />
             <Route path="/attendance-issues" element={<AttendanceIssues />} />
+            <Route path="/attendance-corrections" element={<AttendanceCorrections />} />
             <Route path="/manage-assignments" element={<ManageAssignments />} />
             <Route path="/manage-assignments/:id/submissions" element={<Submissions />} />
           </Route>
