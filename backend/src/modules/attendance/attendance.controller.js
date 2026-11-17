@@ -6,7 +6,7 @@ const { todayLocal } = require('../../utils/sql');
 const { assertTeaches } = require('../../utils/ownership');
 const { saveFileRecord } = require('../../utils/files');
 const { notifyUsers } = require('../../utils/notify');
-const { attendanceRule, RULE_SQL } = require('../../utils/attendanceRule');
+const { attendanceRule, RULE_SQL, summarize } = require('../../utils/attendanceRule');
 
 // =====================================================================
 //  STUDENT
@@ -270,6 +270,34 @@ exports.report = asyncHandler(async (req, res) => {
   res.json({ success: true, data: result[0], filter: { from, to, belowPercent: below ?? null }, rule: attendanceRule() });
 });
 
+// Notify every student of the class whose attendance between the dates is below a limit (default: the minimum).
+// One bell notification per student with their own percentage. Students with no classes held are skipped.
+exports.notifyLow = asyncHandler(async (req, res) => {
+  const { teachingAssignmentId, from, to } = req.body;
+  const below = req.body.below ?? env.attendanceMinPercent;
+  if (from > to) throw new ApiError(400, '"From" date must be on or before the "To" date');
+  await assertTeaches(req.user, teachingAssignmentId);
+
+  const [result] = await pool.query('CALL sp_attendance_report(?, ?, ?, ?)', [teachingAssignmentId, from, to, below]);
+  const low = (result[0] || []).filter((r) => r.attendance_percentage !== null && Number(r.attendance_percentage) < below);
+  if (!low.length) return res.json({ success: true, data: { notified: 0 }, message: 'No student is below the limit' });
+
+  const [[cls]] = await pool.query(
+    `SELECT sub.code, sub.name FROM teaching_assignments ta JOIN subjects sub ON sub.id = ta.subject_id WHERE ta.id = ?`,
+    [teachingAssignmentId]
+  );
+  const [users] = await pool.query('SELECT id, user_id FROM students WHERE id IN (?)', [low.map((r) => r.student_id)]);
+  const userOf = new Map(users.map((u) => [u.id, u.user_id]));
+  const rows = low.filter((r) => userOf.has(r.student_id)).map((r) => [
+    userOf.get(r.student_id), 'system', `Low attendance in ${cls.code}`,
+    `Your attendance in ${cls.code} - ${cls.name} from ${from} to ${to} is ${Number(r.attendance_percentage)}% `
+      + `(${r.attended_classes} of ${r.total_classes} classes). Minimum required: ${env.attendanceMinPercent}%.`,
+    'attendance', Number(teachingAssignmentId),
+  ]);
+  await pool.query('INSERT INTO notifications (user_id, type, title, message, entity_type, entity_id) VALUES ?', [rows]);
+  res.json({ success: true, data: { notified: rows.length }, message: `${rows.length} student(s) notified` });
+});
+
 // Day-wise register: one row per student, one column per class held between two dates.
 // Cells hold the status (present/absent/late/excused) or null when the student had no record for that class.
 // Totals use the approved rule. Lecturer: own classes only. Admin: any class.
@@ -307,16 +335,10 @@ exports.register = asyncHandler(async (req, res) => {
   const rows = students.map((st) => {
     const marks = byStudent.get(st.student_id) || new Map();
     const statuses = sessions.map((ses) => marks.get(ses.id) || null);
-    const held = statuses.filter((x) => x && x !== 'excused').length;
-    const attended = statuses.filter((x) => x === 'present' || x === 'late').length;
     return {
       student_id: st.student_id, usn: st.usn, full_name: st.full_name, student_status: st.student_status,
       statuses,
-      total_classes: held,
-      attended_classes: attended,
-      absent_classes: statuses.filter((x) => x === 'absent').length,
-      excused_classes: statuses.filter((x) => x === 'excused').length,
-      attendance_percentage: held ? Math.round((attended / held) * 10000) / 100 : null,
+      ...summarize(statuses),
     };
   });
   res.json({ success: true, data: { from, to, sessions, students: rows }, rule: attendanceRule() });

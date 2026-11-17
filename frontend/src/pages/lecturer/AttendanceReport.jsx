@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { get } from '../../api/client';
+import { get, post } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import useFetch from '../../hooks/useFetch';
 import { Empty, PageHeader, PercentBar, Spinner } from '../../components/ui';
@@ -58,6 +58,18 @@ export default function AttendanceReport() {
     } catch (err) { toast.error(errMsg(err)); } finally { setRegLoading(false); }
   };
 
+  // bell notification to every student below the limit, with their own %
+  const [notifying, setNotifying] = useState(false);
+  const lowCount = rows ? rows.filter((r) => r.attendancePercentage !== null && r.attendancePercentage < limit).length : 0;
+  const notifyLow = async () => {
+    if (!window.confirm(`Send a low-attendance notification to ${lowCount} student(s) below ${limit}%?`)) return;
+    setNotifying(true);
+    try {
+      const body = await post('/attendance/report/notify-low', { teachingAssignmentId: Number(form.teachingAssignmentId), from: form.from, to: form.to, below: limit });
+      toast.success(body.message || 'Students notified');
+    } catch (err) { toast.error(errMsg(err)); } finally { setNotifying(false); }
+  };
+
   const exportCsv = () => downloadCsv('attendance-report.csv', [
     ['USN', 'Name', 'Classes', 'Attended', 'Absent', 'Percentage'],
     ...sorted.map((r) => [r.usn, r.fullName, r.totalClasses, r.attendedClasses, r.absentClasses, r.attendancePercentage]),
@@ -89,6 +101,7 @@ export default function AttendanceReport() {
             <div className="btn-group">
               <button className="btn btn-sm" onClick={() => setSortAsc(!sortAsc)}>Sort: {sortAsc ? 'lowest first' : 'highest first'}</button>
               {!!rows.length && <button className="btn btn-sm" onClick={exportCsv}>Export CSV</button>}
+              {lowCount > 0 && <button className="btn btn-sm btn-danger" disabled={notifying} onClick={notifyLow}>{notifying ? 'Sending...' : `Notify ${lowCount} below ${limit}%`}</button>}
             </div>
           </div>
           {rule && <div className="alert alert-info">{rule.text}. Minimum required: {rule.minRequiredPercent}%.</div>}

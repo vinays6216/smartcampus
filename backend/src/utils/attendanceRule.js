@@ -16,3 +16,18 @@ exports.RULE_SQL = {
   absent: "COALESCE(SUM(ar.status = 'absent'), 0)",
   percentage: "ROUND(100 * SUM(ar.status IN ('present','late')) / NULLIF(SUM(ar.status <> 'excused'), 0), 2)",
 };
+
+// Same rule in JavaScript, for a list of statuses (null = no record for that class).
+exports.summarize = (statuses) => {
+  const list = statuses.filter(Boolean);
+  const count = (...st) => list.filter((x) => st.includes(x)).length;
+  const held = list.length - count('excused');
+  const attended = count('present', 'late');
+  return {
+    total_classes: held,
+    attended_classes: attended,
+    absent_classes: count('absent'),
+    excused_classes: count('excused'),
+    attendance_percentage: held ? Math.round((attended / held) * 10000) / 100 : null,
+  };
+};

@@ -63,6 +63,10 @@ router.get('/report', authorize('lecturer', 'admin'), validate({
   }),
 }), c.report);
 
+router.post('/report/notify-low', authorize('lecturer', 'admin'), validate({
+  body: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr, below: z.coerce.number().min(1).max(100).optional() }),
+}), c.notifyLow);
+
 router.get('/register', authorize('lecturer', 'admin'), validate({
   query: z.object({ teachingAssignmentId: id, from: dateStr, to: dateStr }),
 }), c.register);
