@@ -18,6 +18,7 @@ module.exports = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME,
+    charset: process.env.DB_CHARSET || 'UTF8MB4_0900_AI_CI',
   },
   jwt: {
     secret: process.env.JWT_SECRET,

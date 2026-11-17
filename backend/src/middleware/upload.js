@@ -28,10 +28,23 @@ function makeUpload(category, allowedExt, maxMB) {
   });
 }
 
+const memoryCsvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).slice(1).toLowerCase();
+    if (!['csv', 'txt'].includes(ext)) {
+      return cb(new ApiError(400, 'Only .csv files are allowed'));
+    }
+    cb(null, true);
+  },
+});
+
 module.exports = {
   timetable: makeUpload('timetables', ['pdf', 'png', 'jpg', 'jpeg'], 10),
   material: makeUpload('materials', ['pdf', 'ppt', 'pptx', 'doc', 'docx'], 25),
   assignment: makeUpload('assignments', ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'zip'], 15),
   submission: makeUpload('submissions', ['pdf'], 15),
   proof: makeUpload('proofs', ['pdf', 'png', 'jpg', 'jpeg'], 5),
+  csv: memoryCsvUpload,
 };

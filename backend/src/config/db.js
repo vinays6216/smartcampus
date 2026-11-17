@@ -7,7 +7,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   dateStrings: true,      // DATE / DATETIME come back as plain strings (no timezone shifts)
   decimalNumbers: true,   // DECIMAL / SUM() come back as numbers instead of strings
-  charset: 'utf8mb4',
+  charset: env.db.charset || 'UTF8MB4_0900_AI_CI',
 });
 
 // Runs fn(conn) inside a transaction. Commits on success, rolls back on any error.

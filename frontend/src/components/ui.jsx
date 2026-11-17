@@ -15,7 +15,12 @@ export function ErrorBox({ message, onRetry }) {
   );
 }
 
-export const Empty = ({ children = 'Nothing to show yet.' }) => <div className="empty">{children}</div>;
+export const Empty = ({ children = 'Nothing to show yet.' }) => (
+  <div className="empty">
+    <div className="empty-icon">📂</div>
+    <div className="empty-text">{children}</div>
+  </div>
+);
 
 // Shows a spinner / error until the useFetch result is ready, then renders the children
 export function Async({ f, children }) {

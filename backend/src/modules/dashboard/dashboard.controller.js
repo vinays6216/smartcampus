@@ -16,10 +16,10 @@ exports.summary = asyncHandler(async (req, res) => {
       [env.attendanceMinPercent, profileId]
     );
     const [[asg]] = await pool.query(
-      `SELECT COALESCE(SUM(display_status = 'Pending'), 0) AS pending,
-              COALESCE(SUM(display_status = 'Due soon'), 0) AS due_soon,
-              COALESCE(SUM(display_status = 'Overdue'), 0) AS overdue,
-              COALESCE(SUM(display_status = 'Submitted'), 0) AS submitted
+      `SELECT COALESCE(SUM(display_status = 'Pending' COLLATE utf8mb4_0900_ai_ci), 0) AS pending,
+              COALESCE(SUM(display_status = 'Due soon' COLLATE utf8mb4_0900_ai_ci), 0) AS due_soon,
+              COALESCE(SUM(display_status = 'Overdue' COLLATE utf8mb4_0900_ai_ci), 0) AS overdue,
+              COALESCE(SUM(display_status = 'Submitted' COLLATE utf8mb4_0900_ai_ci), 0) AS submitted
          FROM v_student_assignments WHERE student_id = ?`,
       [profileId]
     );

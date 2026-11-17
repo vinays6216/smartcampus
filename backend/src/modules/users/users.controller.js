@@ -8,6 +8,7 @@ const paging = require('../../utils/paging');
 const { buildUpdate } = require('../../utils/sql');
 const { audit } = require('../../utils/audit');
 const { notifyUsers } = require('../../utils/notify');
+const { parseCSV, serializeCSV, normalizeStudentHeaders } = require('../../utils/csv');
 
 const tempPassword = () => crypto.randomBytes(6).toString('base64url');
 
@@ -101,6 +102,246 @@ exports.createStudent = asyncHandler(async (req, res) => {
   });
   await audit(req, 'STUDENT_CREATED', 'student', id, null, { usn: b.usn, email: b.email });
   res.status(201).json({ success: true, data: { id, temporaryPassword: password } });
+});
+
+exports.getStudentCsvTemplate = asyncHandler(async (req, res) => {
+  const headers = [
+    'Full Name',
+    'USN',
+    'Email',
+    'Phone',
+    'Program',
+    'Section',
+    'Admission Year',
+    'Date of Birth',
+    'Gender',
+    'Address',
+    'Guardian Name',
+    'Guardian Phone',
+  ];
+  const sampleRows = [
+    {
+      'Full Name': 'John Doe',
+      USN: '1RF25MC099',
+      Email: 'john.doe@smartcampus.local',
+      Phone: '9876543210',
+      Program: 'MCA',
+      Section: 'A',
+      'Admission Year': '2025',
+      'Date of Birth': '2003-05-15',
+      Gender: 'male',
+      Address: '123 Campus Road',
+      'Guardian Name': 'Robert Doe',
+      'Guardian Phone': '9876543211',
+    },
+    {
+      'Full Name': 'Jane Smith',
+      USN: '1RF25MC098',
+      Email: 'jane.smith@smartcampus.local',
+      Phone: '9876543212',
+      Program: 'MCA',
+      Section: 'A',
+      'Admission Year': '2025',
+      'Date of Birth': '2003-08-20',
+      Gender: 'female',
+      Address: '456 College Ave',
+      'Guardian Name': 'Mary Smith',
+      'Guardian Phone': '9876543213',
+    },
+  ];
+  const csvContent = serializeCSV(headers, sampleRows);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="students_template.csv"');
+  res.send(csvContent);
+});
+
+exports.bulkImportStudents = asyncHandler(async (req, res) => {
+  let csvText = '';
+  if (req.file && req.file.buffer) {
+    csvText = req.file.buffer.toString('utf8');
+  } else if (req.body && req.body.csv) {
+    csvText = String(req.body.csv);
+  } else {
+    throw new ApiError(400, 'Please upload a CSV file or provide CSV text');
+  }
+
+  const rawRows = parseCSV(csvText);
+  if (!rawRows.length) {
+    throw new ApiError(400, 'The CSV file is empty or contains only headers');
+  }
+
+  const defaultProgramId = req.body.programId ? Number(req.body.programId) : null;
+  const defaultSectionId = req.body.sectionId ? Number(req.body.sectionId) : null;
+
+  // Pre-fetch programs and sections
+  const [programs] = await pool.query('SELECT id, code, name FROM programs');
+  const programById = new Map(programs.map((p) => [p.id, p]));
+  const programByCode = new Map(programs.map((p) => [p.code.toUpperCase(), p]));
+
+  const [sections] = await pool.query('SELECT id, program_id, semester_no, name FROM sections');
+  const sectionById = new Map(sections.map((s) => [s.id, s]));
+
+  // Track existing emails and USNs
+  const [existingUsers] = await pool.query('SELECT email FROM users');
+  const dbEmails = new Set(existingUsers.map((u) => u.email.toLowerCase()));
+
+  const [existingStudents] = await pool.query('SELECT usn FROM students');
+  const dbUsns = new Set(existingStudents.map((s) => s.usn.toUpperCase()));
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const created = [];
+  const errors = [];
+  const seenBatchUsns = new Set();
+  const seenBatchEmails = new Set();
+
+  for (let idx = 0; idx < rawRows.length; idx++) {
+    const rowNum = idx + 2; // Row 1 is header
+    const raw = rawRows[idx];
+    const norm = normalizeStudentHeaders(raw);
+
+    const fullName = (norm.fullName || '').trim();
+    const usn = (norm.usn || '').trim().toUpperCase();
+    const email = (norm.email || '').trim().toLowerCase();
+    const phone = norm.phone ? String(norm.phone).trim() : null;
+
+    if (!fullName || fullName.length < 2) {
+      errors.push({ row: rowNum, usn, email, error: 'Full name is required (minimum 2 characters)' });
+      continue;
+    }
+    if (!usn || usn.length < 3) {
+      errors.push({ row: rowNum, usn, email, error: 'USN is required (minimum 3 characters)' });
+      continue;
+    }
+    if (!email || !emailRegex.test(email)) {
+      errors.push({ row: rowNum, usn, email, error: 'Valid email address is required' });
+      continue;
+    }
+
+    if (dbUsns.has(usn) || seenBatchUsns.has(usn)) {
+      errors.push({ row: rowNum, usn, email, error: `USN "${usn}" already exists` });
+      continue;
+    }
+    if (dbEmails.has(email) || seenBatchEmails.has(email)) {
+      errors.push({ row: rowNum, usn, email, error: `Email "${email}" already exists` });
+      continue;
+    }
+
+    // Resolve program
+    let targetProgramId = defaultProgramId;
+    if (norm.program) {
+      const pVal = String(norm.program).trim();
+      if (!isNaN(pVal) && programById.has(Number(pVal))) {
+        targetProgramId = Number(pVal);
+      } else if (programByCode.has(pVal.toUpperCase())) {
+        targetProgramId = programByCode.get(pVal.toUpperCase()).id;
+      }
+    }
+    if (!targetProgramId || !programById.has(targetProgramId)) {
+      errors.push({ row: rowNum, usn, email, error: 'Program is required or invalid' });
+      continue;
+    }
+
+    // Resolve section
+    let targetSectionId = defaultSectionId;
+    if (norm.section) {
+      const sVal = String(norm.section).trim();
+      if (!isNaN(sVal) && sectionById.has(Number(sVal))) {
+        const sec = sectionById.get(Number(sVal));
+        if (sec.program_id === targetProgramId) {
+          targetSectionId = sec.id;
+        }
+      } else {
+        const matched = sections.find(
+          (s) => s.program_id === targetProgramId && s.name.toUpperCase() === sVal.toUpperCase()
+        );
+        if (matched) targetSectionId = matched.id;
+      }
+    }
+    if (!targetSectionId || !sectionById.has(targetSectionId)) {
+      errors.push({ row: rowNum, usn, email, error: 'Section is required or invalid for the selected program' });
+      continue;
+    }
+
+    const sec = sectionById.get(targetSectionId);
+    if (sec.program_id !== targetProgramId) {
+      errors.push({ row: rowNum, usn, email, error: 'Section does not belong to the selected program' });
+      continue;
+    }
+
+    // Optional fields
+    let admissionYear = null;
+    if (norm.admissionYear) {
+      const yr = Number(norm.admissionYear);
+      if (!isNaN(yr) && yr >= 2000 && yr <= 2100) admissionYear = yr;
+    }
+
+    let gender = null;
+    if (norm.gender && ['male', 'female', 'other'].includes(norm.gender.toLowerCase())) {
+      gender = norm.gender.toLowerCase();
+    }
+
+    let dateOfBirth = null;
+    if (norm.dateOfBirth && /^\d{4}-\d{2}-\d{2}$/.test(norm.dateOfBirth)) {
+      dateOfBirth = norm.dateOfBirth;
+    }
+
+    const address = norm.address ? String(norm.address).trim().slice(0, 255) : null;
+    const guardianName = norm.guardianName ? String(norm.guardianName).trim().slice(0, 150) : null;
+    const guardianPhone = norm.guardianPhone ? String(norm.guardianPhone).trim().slice(0, 20) : null;
+
+    const password = norm.password && norm.password.length >= 8 ? norm.password : tempPassword();
+
+    try {
+      const hash = await bcrypt.hash(password, env.bcryptRounds);
+      const studentId = await withTransaction(async (conn) => {
+        const [u] = await conn.query(
+          "INSERT INTO users (email, password_hash, role, full_name, phone) VALUES (?, ?, 'student', ?, ?)",
+          [email, hash, fullName, phone || null]
+        );
+        const [s] = await conn.query(
+          `INSERT INTO students (user_id, usn, program_id, section_id, admission_year, date_of_birth, gender, address, guardian_name, guardian_phone)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [u.insertId, usn, targetProgramId, targetSectionId, admissionYear, dateOfBirth, gender, address, guardianName, guardianPhone]
+        );
+        return s.insertId;
+      });
+
+      seenBatchUsns.add(usn);
+      seenBatchEmails.add(email);
+      dbUsns.add(usn);
+      dbEmails.add(email);
+
+      created.push({
+        row: rowNum,
+        id: studentId,
+        usn,
+        fullName,
+        email,
+        temporaryPassword: password,
+      });
+    } catch (err) {
+      errors.push({ row: rowNum, usn, email, error: err.message });
+    }
+  }
+
+  if (created.length > 0) {
+    await audit(req, 'STUDENTS_BULK_IMPORTED', 'student', null, null, {
+      totalUploaded: rawRows.length,
+      createdCount: created.length,
+      failedCount: errors.length,
+    });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      totalRows: rawRows.length,
+      createdCount: created.length,
+      failedCount: errors.length,
+      created,
+      errors,
+    },
+  });
 });
 
 exports.updateStudent = asyncHandler(async (req, res) => {

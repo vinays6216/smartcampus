@@ -17,6 +17,7 @@ import Notifications from './pages/Notifications';
 import StudentAttendance from './pages/student/Attendance';
 import StudentAssignments from './pages/student/Assignments';
 import AssignmentDetail from './pages/student/AssignmentDetail';
+import StudentProfile from './pages/student/Profile';
 
 import MarkAttendance from './pages/lecturer/MarkAttendance';
 import AttendanceReport from './pages/lecturer/AttendanceReport';
@@ -50,6 +51,7 @@ export default function App() {
 
           {/* student only */}
           <Route element={<ProtectedRoute roles={['student']} />}>
+            <Route path="/profile" element={<StudentProfile />} />
             <Route path="/attendance" element={<StudentAttendance />} />
             <Route path="/assignments" element={<StudentAssignments />} />
             <Route path="/assignments/:id" element={<AssignmentDetail />} />

@@ -29,8 +29,13 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <h1>Smart Campus</h1>
+        <h1>🎓 Smart Campus</h1>
         <p className="muted">Sign in with your college account</p>
+        <div className="login-roles-preview">
+          <span className="role-chip chip-student">Student</span>
+          <span className="role-chip chip-lecturer">Lecturer</span>
+          <span className="role-chip chip-admin">Admin</span>
+        </div>
         <form onSubmit={submit}>
           {error && <div className="alert alert-error">{error}</div>}
           <div className="field"><label>Email</label>

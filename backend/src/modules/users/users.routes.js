@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { z, id, dateStr, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
 const { authenticate, authorize } = require('../../middleware/auth');
+const upload = require('../../middleware/upload');
 const c = require('./users.controller');
 
 router.use(authenticate, authorize('admin'));
@@ -48,6 +49,10 @@ router.get('/students', validate({ query: listQuery }), c.listStudents);
 router.post('/students/move-section', validate({
   body: z.object({ studentIds: z.array(id).min(1).max(500), sectionId: id }),
 }), c.moveStudents);
+// CSV template & Bulk upload. Keep above "/students/:id".
+router.get('/students/csv-template', c.getStudentCsvTemplate);
+router.post('/students/bulk-csv', upload.csv.single('file'), c.bulkImportStudents);
+
 router.get('/students/:id', validate({ params: idParam }), c.getStudent);
 router.post('/students', validate({ body: studentBody }), c.createStudent);
 router.put('/students/:id', validate({ params: idParam, body: studentBody.partial().omit({ password: true }) }), c.updateStudent);

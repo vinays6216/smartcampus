@@ -25,7 +25,7 @@ export default function ResetPassword() {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <h1>Set new password</h1>
+        <h1>🔑 Set new password</h1>
         <form onSubmit={submit}>
           {error && <div className="alert alert-error">{error}</div>}
           <div className="field"><label>New password (min 8 characters)</label>

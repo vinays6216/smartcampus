@@ -17,7 +17,7 @@ export default function ForgotPassword() {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <h1>Forgot password</h1>
+        <h1>🔒 Forgot password</h1>
         <p className="muted">We will send a reset link to your email.</p>
         <form onSubmit={submit}>
           {message && <div className="alert alert-info">{message}</div>}

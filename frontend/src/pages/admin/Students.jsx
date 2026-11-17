@@ -4,6 +4,7 @@ import useFetch from '../../hooks/useFetch';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/FormModal';
 import Modal from '../../components/Modal';
+import StudentCsvModal from './StudentCsvModal';
 import { Async, Badge, Empty, PageHeader, Pagination } from '../../components/ui';
 import { clean, errMsg, sectionLabel, sectionShort } from '../../utils/helpers';
 
@@ -17,6 +18,7 @@ export default function Students() {
   const [secret, setSecret] = useState(null); // temporary password shown once
   const [selected, setSelected] = useState([]); // student ids ticked for "Move selected"
   const [moving, setMoving] = useState(false);
+  const [csvModal, setCsvModal] = useState(false);
   const limit = 15;
 
   const f = useFetch(() => get('/admin/students', { ...clean(filters), page, limit }), [filters, page]);
@@ -90,6 +92,9 @@ export default function Students() {
       <PageHeader title="Students" subtitle="View, add and edit student accounts">
         <button className="btn" disabled={!selected.length} onClick={() => setMoving(true)}>
           Move selected ({selected.length}) to a section
+        </button>
+        <button className="btn" onClick={() => setCsvModal(true)}>
+          📥 Upload CSV
         </button>
         <button className="btn btn-primary" onClick={() => setForm({ mode: 'create' })}>+ Add student</button>
       </PageHeader>
@@ -179,6 +184,14 @@ export default function Students() {
         <div className="alert alert-info" style={{ fontSize: '1.3rem', textAlign: 'center', letterSpacing: 1 }}><code>{secret?.password}</code></div>
         <div className="form-actions"><button className="btn btn-primary" onClick={() => setSecret(null)}>Done</button></div>
       </Modal>
+
+      <StudentCsvModal
+        open={csvModal}
+        onClose={() => setCsvModal(false)}
+        onImportSuccess={() => f.reload()}
+        programs={programs.data || []}
+        sections={sections.data || []}
+      />
     </>
   );
 }
