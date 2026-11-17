@@ -34,17 +34,43 @@ The backend is organized by feature modules in `backend/src/modules/`. The front
 
 - Node.js 18 or newer and npm
 - MySQL 8 or a compatible MySQL server
-- A database schema matching the Smart Campus API
 
-> **Database setup:** The SQL schema is not included in this repository. Create/import the Smart Campus schema in MySQL before starting the backend, then set `DB_NAME` in `backend/.env` to that database name. The backend component README refers to `smart_campus`.
->
-> After importing the base schema, apply `backend/migrations/20261111_add_program_specializations.sql` to add MCA Semester 3 specialization management.
+## Quick Start (Windows)
+
+1. Create the database (see **Database setup** below).
+2. Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env`, then fill in the values.
+3. Give the starter admin a password: `cd backend; npm run create-admin -- --email admin@smartcampus.local`.
+4. Double-click `start-dev.cmd` (or run `.\start-dev.ps1`). It installs packages on the first run, opens the backend and frontend in two windows, and opens `http://localhost:5173` once the API answers.
+
+## Database setup
+
+The complete schema is in `database/schema.sql`: 27 tables, 3 views (`v_student_subject_attendance`, `v_student_attendance_detail`, `v_student_assignments`), the attendance-history trigger, 3 stored procedures (`sp_attendance_report`, `sp_publish_assignment`, `sp_create_deadline_reminders`) and the hourly `ev_deadline_reminders` event. It creates the `smart_campus` database itself and is safe to run again.
+
+Starter data: department CS, program MCA (specializations WAD, DS and AIML from semester 3), academic year 2026-27, and the admin `admin@smartcampus.local` with a placeholder password hash that matches no password (set one with `npm run create-admin`, below).
+
+Run it as the MySQL root user (MySQL Workbench: File → Open SQL Script → run all with Ctrl+Shift+Enter, or the command line):
+
+```powershell
+mysql -u root -p < database/schema.sql
+```
+
+Then, still as root, turn on the event scheduler (deadline reminders) and create a limited account for the app:
+
+```sql
+SET GLOBAL event_scheduler = ON;   -- to keep it after a restart, add event_scheduler=ON under [mysqld] in my.ini
+CREATE USER '<app_user>'@'localhost' IDENTIFIED BY '<strong password>';
+GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE ON smart_campus.* TO '<app_user>'@'localhost';
+```
+
+Put that user and password in `backend/.env` (`DB_USER`, `DB_PASSWORD`).
+
+Attendance rule used everywhere: **percentage = (present + late) ÷ (classes held − excused) × 100**, minimum `ATTENDANCE_MIN_PERCENT` (75). It is calculated by the database, so approved corrections update it immediately.
 
 ## Local Development
 
 ### 1. Configure the backend
 
-Create `backend/.env` with your local MySQL connection and a long, random JWT secret:
+Copy `backend/.env.example` to `backend/.env` and fill in your local MySQL connection and a long, random JWT secret:
 
 ```env
 NODE_ENV=development
@@ -78,7 +104,7 @@ For a non-watch server, use `npm start`. The API listens on `http://localhost:50
 
 ### 2. Configure the frontend
 
-Create `frontend/.env`:
+Copy `frontend/.env.example` to `frontend/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5000/api
@@ -96,13 +122,17 @@ Open `http://localhost:5173`. The backend's `CLIENT_URL` must match the frontend
 
 ### 3. Create the initial admin account
 
-There is no public sign-up. Create an admin account in the database using the schema's required user and admin profile records. Passwords must be bcrypt hashes; you can generate one from the backend directory with:
+There is no public sign-up. From the `backend` folder:
 
 ```powershell
-node -e "console.log(require('bcryptjs').hashSync('ChangeThisPassword', 10))"
+npm run create-admin -- --email admin@smartcampus.local
 ```
 
-Insert the generated hash for the admin account according to your database schema. After logging in, create academic setup records first, then lecturers, students, and teaching assignments.
+This sets a password for the starter admin created by the schema. To add another admin instead, give a new email and a name: `npm run create-admin -- --email admin@college.edu --name "Admin Name"` (optional `--code <employee code>`, default `ADM` + user id, and `--designation <text>`).
+
+Without `ADMIN_PASSWORD` set, the script prints a one-time temporary password and the admin must change it at first sign-in. The script uses the database settings in `backend/.env`.
+
+After logging in, create academic setup records first, then lecturers, students, and teaching assignments.
 
 ## Scripts
 
@@ -112,6 +142,8 @@ Run these commands from the relevant package directory.
 |---|---|---|
 | `backend` | `npm run dev` | Start API with automatic restart |
 | `backend` | `npm start` | Start API |
+| `backend` | `npm run create-admin -- --email …` | Set the starter admin's password (or `--name …` to add an admin) |
+| repo root | `start-dev.cmd` / `.\start-dev.ps1` | Start backend + frontend in two windows |
 | `frontend` | `npm run dev` | Start Vite development server |
 | `frontend` | `npm run build` | Build the frontend into `frontend/dist/` |
 | `frontend` | `npm run preview` | Preview the production build locally |
@@ -138,7 +170,7 @@ Role and ownership checks restrict access to the appropriate users and classes. 
 - The backend stores uploads locally. For deployment, configure persistent storage and backups for `backend/uploads/`.
 - Use a unique production `JWT_SECRET`, a restricted database account, HTTPS, and production-appropriate CORS settings.
 - The hourly assignment deadline reminder depends on the MySQL event `ev_deadline_reminders`; enable the MySQL event scheduler where that feature is required.
-- Scheduled announcements are stored, but notifications are sent only when an announcement is published immediately.
+- Scheduled announcements: the backend checks every minute and notifies the audience once the publish time has passed (announcements that went live in the last 7 days; each is notified once).
 
 ## Component Documentation
 

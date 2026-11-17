@@ -1,15 +1,13 @@
 # Smart Campus Backend (Node.js + Express + MySQL)
 
-REST API for the Smart Campus Management System. It matches the `smart_campus` MySQL database created by `smart_campus_schema.sql`.
+REST API for the Smart Campus Management System. It matches the `smart_campus` MySQL database created by `../database/schema.sql`.
 
 ## 1. Run it
 
-1. Create the database first (run `smart_campus_schema.sql` in MySQL Workbench).
+1. Create the database first: run `../database/schema.sql` as MySQL root, then create the app user (see the root README).
 2. In this folder: `npm install`
 3. Copy `.env.example` to `.env` and fill the values (DB user/password, a long random `JWT_SECRET`).
-4. Generate a bcrypt hash for the admin password and put it in the `users` table:
-   `node -e "console.log(require('bcryptjs').hashSync('YourAdminPassword', 10))"`
-   then in Workbench: `UPDATE users SET password_hash='<hash>' WHERE email='admin@smartcampus.local';`
+4. Give the starter admin a password: `npm run create-admin -- --email admin@smartcampus.local` (prints a one-time password).
 5. `npm run dev` (auto restart) or `npm start`. Test: open http://localhost:5000/api/health
 
 ## 2. Conventions
@@ -111,7 +109,7 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 ### Attendance  `/api/attendance`
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| GET | /student/summary | student | subject-wise % and overall % |
+| GET | /student/summary | student | subject-wise % and overall % (optional from, to) + the rule |
 | GET | /student/detail | student | day-by-day list (from, to, subjectCode, status) |
 | POST | /issues | student | raise issue (attendanceRecordId, reason, optional file `proof`) |
 | GET | /issues/mine | student | my issues |
@@ -120,7 +118,10 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | GET | /sessions | lecturer, admin | sessions of a class (teachingAssignmentId, from, to) |
 | GET | /sessions/:id | lecturer, admin | one session with every student's status |
 | PUT | /sessions/:id/records | lecturer | correct marks (history is logged by the DB trigger) |
-| GET | /report | lecturer, admin | % between dates: teachingAssignmentId, from, to, optional below |
+| GET | /report | lecturer, admin | % between dates: teachingAssignmentId, from, to, optional below (+ the rule) |
+| GET | /corrections | lecturer, admin | logged status changes (from, to, teachingAssignmentId); lecturer: own classes |
+| GET | /register | lecturer, admin | day-wise register for teachingAssignmentId, from, to: sessions + per-student statuses and totals (approved rule) |
+| GET | /sessions/previous | lecturer, admin | most recent earlier class (teachingAssignmentId, date, period) with its marks, for "Copy last class" |
 | GET | /issues | lecturer, admin | issues of my classes (status filter) |
 | PATCH | /issues/:id/resolve | lecturer, admin | decision approve / reject, remarks |
 
@@ -160,6 +161,7 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | PUT, DELETE | /api/announcements/:id | author, admin | edit / delete |
 | GET | /api/calendar | all | events (from, to) |
 | POST | /api/calendar | lecturer, admin | stand-alone event |
+| PUT | /api/calendar/:id | creator, admin | edit title, type, date, times, location, details (section stays) |
 | DELETE | /api/calendar/:id | creator, admin | delete |
 
 ### Notifications, dashboard, files
@@ -169,6 +171,7 @@ Specialization rules (checked in `src/utils/specialization.js`): `programs.speci
 | GET | /api/notifications/unread-count | bell badge |
 | PATCH | /api/notifications/:id/read, /api/notifications/read-all | mark read |
 | GET | /api/dashboard | role-wise summary cards |
+| GET | /api/dashboard/upcoming | calendar events + assignment deadlines in the next 7 days (role-scoped) |
 | GET | /api/files/:id | download file (add `?inline=1` to view in browser) |
 
 ## 5. Notes
