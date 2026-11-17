@@ -13,16 +13,26 @@ const MENUS = {
     ['/attendance-issues', '⚠️', 'Attendance Issues'], ['/attendance-corrections', '🧾', 'Corrections Log'], ['/manage-assignments', '📝', 'Assignments'], ['/timetable', '🗓️', 'Time Table'],
     ['/materials', '📚', 'Study Materials'], ['/announcements', '📢', 'Announcements'], ['/calendar', '📅', 'Calendar'],
   ],
+  // 4th item = permission the admin needs to see the entry ('platform' = platform admins only)
   admin: [
-    ['/', '📊', 'Dashboard'], ['/students', '🎓', 'Students'], ['/lecturers', '👨‍🏫', 'Lecturers'], ['/academic', '🏛️', 'Academic Setup'],
-    ['/teaching', '📋', 'Teaching Assignments'], ['/timetable', '🗓️', 'Time Tables'], ['/manage-assignments', '📝', 'Assignments'],
-    ['/attendance-report', '📈', 'Attendance Report'], ['/attendance-issues', '⚠️', 'Attendance Issues'], ['/attendance-corrections', '🧾', 'Corrections Log'],
+    ['/', '📊', 'Dashboard'], ['/platform', '🛡️', 'Platform Admins', 'platform'],
+    ['/students', '🎓', 'Students', 'users'], ['/lecturers', '👨‍🏫', 'Lecturers', 'users'], ['/academic', '🏛️', 'Academic Setup', 'academic'],
+    ['/teaching', '📋', 'Teaching Assignments', 'academic'], ['/timetable', '🗓️', 'Time Tables'], ['/manage-assignments', '📝', 'Assignments', 'assignments'],
+    ['/attendance-report', '📈', 'Attendance Report', 'attendance'], ['/attendance-issues', '⚠️', 'Attendance Issues', 'attendance'],
+    ['/attendance-corrections', '🧾', 'Corrections Log', 'attendance'],
     ['/materials', '📚', 'Study Materials'], ['/announcements', '📢', 'Announcements'], ['/calendar', '📅', 'Calendar'],
   ],
 };
 
+// Admin menu entries the signed-in admin may use. Without permission info (old session) everything is shown.
+function allowed(user, need) {
+  if (user.role !== 'admin' || !need) return true;
+  if (need === 'platform') return !!user.isPlatformAdmin;
+  return !Array.isArray(user.permissions) || user.permissions.includes(need);
+}
+
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -38,12 +48,19 @@ export default function Layout() {
 
   useEffect(() => setOpen(false), [location.pathname]);
 
+  // refresh the admin's permissions (a platform admin may have changed them)
+  useEffect(() => {
+    if (user.role !== 'admin') return;
+    get('/auth/me').then((b) => updateUser({ isPlatformAdmin: !!b.data.isPlatformAdmin, permissions: b.data.permissions })).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   return (
     <div className={`shell theme-${user.role}`}>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand">🎓 Smart Campus</div>
         <nav>
-          {MENUS[user.role].map(([to, icon, text]) => (
+          {MENUS[user.role].filter((m) => allowed(user, m[3])).map(([to, icon, text]) => (
             <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}><span className="nav-icon">{icon}</span>{text}</NavLink>
           ))}
         </nav>
@@ -65,7 +82,7 @@ export default function Layout() {
           ) : (
             <div className="user-chip">
               <strong>{user.fullName}</strong>
-              <span className="role-badge">{user.role}</span>
+              <span className="role-badge">{user.isPlatformAdmin ? 'platform admin' : user.role}</span>
             </div>
           )}
           <Link to="/change-password" className="btn btn-sm">Password</Link>

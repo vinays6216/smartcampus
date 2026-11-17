@@ -30,6 +30,7 @@ import Students from './pages/admin/Students';
 import Lecturers from './pages/admin/Lecturers';
 import Academic from './pages/admin/Academic';
 import Teaching from './pages/admin/Teaching';
+import PlatformAdmins from './pages/platform/Admins';
 
 export default function App() {
   return (
@@ -78,6 +79,7 @@ export default function App() {
             <Route path="/lecturers" element={<Lecturers />} />
             <Route path="/academic" element={<Academic />} />
             <Route path="/teaching" element={<Teaching />} />
+            <Route path="/platform" element={<PlatformAdmins />} />
           </Route>
         </Route>
       </Route>

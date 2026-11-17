@@ -7,6 +7,14 @@ const ApiError = require('../../utils/ApiError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { getProfileId } = require('../../utils/profile');
 const { audit } = require('../../utils/audit');
+const { adminAccess } = require('../../utils/permissions');
+
+// For the menu: which areas an admin may use (null for students and lecturers).
+const accessFor = async (role, profileId) => {
+  if (role !== 'admin') return { isPlatformAdmin: false, permissions: null };
+  const a = await adminAccess(profileId);
+  return { isPlatformAdmin: a.platform, permissions: a.permissions };
+};
 
 exports.login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -39,6 +47,7 @@ exports.login = asyncHandler(async (req, res) => {
       role: user.role,
       profileId,
       mustChangePassword: !!user.must_change_password,
+      ...(await accessFor(user.role, profileId)),
     },
   });
 });
@@ -69,7 +78,7 @@ exports.me = asyncHandler(async (req, res) => {
   } else {
     [[profile]] = await pool.query('SELECT id, employee_code, designation FROM admins WHERE id = ?', [profileId]);
   }
-  res.json({ success: true, data: { ...user, profile } });
+  res.json({ success: true, data: { ...user, profile, ...(await accessFor(role, profileId)) } });
 });
 
 exports.getStudentProfile = asyncHandler(async (req, res) => {

@@ -4,6 +4,7 @@ router.get('/health', (req, res) => res.json({ success: true, status: 'ok', time
 
 router.use('/auth', require('../modules/auth/auth.routes'));
 router.use('/admin', require('../modules/users/users.routes'));
+router.use('/platform', require('../modules/platform/platform.routes'));
 router.use('/academic', require('../modules/academic/academic.routes'));
 router.use('/teaching', require('../modules/teaching/teaching.routes'));
 router.use('/timetables', require('../modules/timetable/timetable.routes'));

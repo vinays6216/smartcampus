@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { z, id, dateStr, timeStr, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./calendar.controller');
 
 router.use(authenticate);
@@ -13,7 +13,7 @@ const timeMessage = { message: 'End time must be after start time', path: ['endT
 
 router.get('/', validate({ query: z.object({ from: dateStr.optional(), to: dateStr.optional() }) }), c.list);
 
-router.post('/', authorize('lecturer', 'admin'), validate({
+router.post('/', authorize('lecturer', 'admin'), adminCan('announcements'), validate({
   body: z.object({
     title: z.string().trim().min(3).max(200),
     description: z.string().trim().max(500).optional(),
@@ -30,7 +30,7 @@ router.post('/', authorize('lecturer', 'admin'), validate({
 // Edit an event (creator or admin). Empty strings clear optional fields. The section cannot be changed.
 const optionalText = (max) => z.string().trim().max(max).optional();
 const optionalTime = z.union([timeStr, z.literal('')]).optional();
-router.put('/:id', authorize('lecturer', 'admin'), validate({
+router.put('/:id', authorize('lecturer', 'admin'), adminCan('announcements'), validate({
   params: idParam,
   body: z.object({
     title: z.string().trim().min(3).max(200).optional(),
@@ -43,6 +43,6 @@ router.put('/:id', authorize('lecturer', 'admin'), validate({
   }),
 }), c.update);
 
-router.delete('/:id', authorize('lecturer', 'admin'), validate({ params: idParam }), c.remove);
+router.delete('/:id', authorize('lecturer', 'admin'), adminCan('announcements'), validate({ params: idParam }), c.remove);
 
 module.exports = router;

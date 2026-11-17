@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { z, id, boolOpt, idParam } = require('../../utils/zodHelpers');
 const validate = require('../../middleware/validate');
 const upload = require('../../middleware/upload');
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, adminCan } = require('../../middleware/auth');
 const c = require('./materials.controller');
 
 router.use(authenticate);
@@ -24,7 +24,7 @@ router.post('/', authorize('lecturer'), upload.material.single('file'), validate
   }),
 }), c.upload);
 
-router.put('/:id', authorize('lecturer', 'admin'), validate({
+router.put('/:id', authorize('lecturer', 'admin'), adminCan('assignments'), validate({
   params: idParam,
   body: z.object({
     title: z.string().trim().min(2).max(200).optional(), description: z.string().trim().max(500).optional(),
@@ -32,6 +32,6 @@ router.put('/:id', authorize('lecturer', 'admin'), validate({
   }),
 }), c.update);
 
-router.delete('/:id', authorize('lecturer', 'admin'), validate({ params: idParam }), c.hide);
+router.delete('/:id', authorize('lecturer', 'admin'), adminCan('assignments'), validate({ params: idParam }), c.hide);
 
 module.exports = router;
