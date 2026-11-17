@@ -64,15 +64,23 @@ test('only admins edit the weekly timetable (403)', async () => {
   }
 });
 
+test('platform routes are closed to lecturers and students (403) and need a token (401)', async () => {
+  assert.equal((await call('GET', '/platform/admins')).status, 401);
+  for (const role of ['student', 'lecturer']) {
+    assert.equal((await call('GET', '/platform/admins', role)).status, 403, role);
+    assert.equal((await call('POST', '/platform/admins', role, { email: 'x@y.z', fullName: 'X' })).status, 403, role);
+  }
+});
+
 test('marking is for lecturers, own summary is for students (403)', async () => {
   assert.equal((await call('POST', '/attendance/sessions', 'student', {})).status, 403);
   assert.equal((await call('GET', '/attendance/student/summary', 'lecturer')).status, 403);
 });
 
 test('bad input is rejected before the database (400)', async () => {
-  const slot = { teachingAssignmentId: 1, dayOfWeek: 9, periodNo: 1, startTime: '09:00', endTime: '10:00' };
-  assert.equal((await call('POST', '/timetables/slots', 'admin', slot)).status, 400);
-  assert.equal((await call('POST', '/timetables/slots', 'admin', { ...slot, dayOfWeek: 1, startTime: '9am' })).status, 400);
+  // (admin routes check the admin's permissions in the database first, so they are covered by the smoke test)
+  assert.equal((await call('POST', '/attendance/sessions', 'lecturer', { teachingAssignmentId: 1, sessionDate: '17-11-2026' })).status, 400);
+  assert.equal((await call('POST', '/attendance/sessions', 'lecturer', { teachingAssignmentId: 1, sessionDate: '2026-11-17', periodNo: 13 })).status, 400);
   assert.equal((await call('GET', '/attendance/register?teachingAssignmentId=1&from=01-01-2026&to=2026-01-31', 'lecturer')).status, 400);
   assert.equal((await call('POST', '/attendance/report/notify-low', 'lecturer', { teachingAssignmentId: 1, from: '2026-01-01', to: '2026-01-31', below: 500 })).status, 400);
   assert.equal((await call('GET', '/attendance/student/summary?from=2026-13-45x', 'student')).status, 400);

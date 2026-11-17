@@ -191,6 +191,59 @@ ok('Q2 notification shows the student\'s %', !!lowN && lowN.message.includes('66
 ok('Q2 limit 50% -> nobody notified', (await call('POST', '/attendance/report/notify-low', lt, { teachingAssignmentId: ta.data.id, from: today, to: today, below: 50 })).data?.notified === 0);
 ok('Q2 student cannot send (403)', (await call('POST', '/attendance/report/notify-low', st, { teachingAssignmentId: ta.data.id, from: today, to: today })).status === 403);
 
+results.push('--- A platform admin + permissions');
+const meA = await call('GET', '/auth/me', admin);
+ok('A starter admin is platform admin with all areas', meA.data?.isPlatformAdmin === true && meA.data.permissions?.length === 6, JSON.stringify(meA.data?.permissions));
+const lim = await call('POST', '/platform/admins', admin, { email: 'att.admin@test.local', fullName: 'Attendance Admin', permissions: ['attendance'] });
+ok('A platform admin creates a limited admin', lim.status === 201 && !!lim.data?.temporaryPassword);
+const la = await login('att.admin@test.local', lim.data.temporaryPassword);
+const meL = await call('GET', '/auth/me', la);
+ok('A limited admin: only "attendance"', meL.data?.isPlatformAdmin === false && JSON.stringify(meL.data.permissions) === '["attendance"]');
+ok('A limited admin can use attendance', (await call('GET', `/attendance/report?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}`, la)).status === 200);
+ok('A limited admin blocked from students (403)', (await call('GET', '/admin/students', la)).status === 403);
+ok('A limited admin blocked from academic writes (403)', (await call('POST', '/academic/departments', la, { code: 'XX', name: 'Nope' })).status === 403);
+ok('A limited admin blocked from timetable writes (403)', (await call('POST', '/timetables/slots', la, { teachingAssignmentId: ta.data.id, dayOfWeek: 5, periodNo: 5, startTime: '14:00', endTime: '15:00' })).status === 403);
+ok('A limited admin blocked from announcements (403)', (await call('POST', '/announcements', la, { title: 'x', body: 'y', audienceType: 'all' })).status === 403);
+ok('A limited admin blocked from platform (403)', (await call('GET', '/platform/admins', la)).status === 403);
+ok('A limited admin still sees dashboard counts', (await call('GET', '/admin/dashboard/counts', la)).status === 200);
+ok('A lecturer blocked from platform (403)', (await call('GET', '/platform/admins', lt)).status === 403);
+ok('A grant "users" -> works at once', (await call('PUT', `/platform/admins/${lim.data.id}/permissions`, admin, { permissions: ['attendance', 'users'] })).status === 200
+  && (await call('GET', '/admin/students', la)).status === 200);
+ok('A list shows permissions', (await call('GET', '/platform/admins', admin)).data?.find((a) => a.id === lim.data.id)?.permissions?.length === 2);
+ok('A cannot drop own platform rights (400)', (await call('PUT', `/platform/admins/${meA.data.profile.id}/permissions`, admin, { permissions: ['users'] })).status === 400);
+ok('A cannot deactivate self (400)', (await call('PATCH', `/platform/admins/${meA.data.profile.id}/status`, admin, { status: 'inactive' })).status === 400);
+ok('A bad permission name (400)', (await call('PUT', `/platform/admins/${lim.data.id}/permissions`, admin, { permissions: ['everything'] })).status === 400);
+ok('A reset password gives a new one', !!(await call('POST', `/platform/admins/${lim.data.id}/reset-password`, admin)).data?.temporaryPassword);
+ok('A deactivate -> blocked at once and at login', (await call('PATCH', `/platform/admins/${lim.data.id}/status`, admin, { status: 'inactive' })).status === 200
+  && (await call('GET', `/attendance/report?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}`, la)).status === 403
+  && (await call('POST', '/auth/login', null, { email: 'att.admin@test.local', password: lim.data.temporaryPassword })).status !== 200);
+
+results.push('--- B attendance editing');
+const s1rec = (await call('GET', `/attendance/sessions/${s1.data.sessionId}`, lt)).data;
+ok('B admin edit without reason (400)', (await call('PUT', `/attendance/sessions/${s1.data.sessionId}/records`, admin, { records: [{ studentId: sid, status: 'late' }] })).status === 400);
+ok('B admin edit with reason', (await call('PUT', `/attendance/sessions/${s1.data.sessionId}/records`, admin, { records: [{ studentId: sid, status: 'late' }], reason: 'Arrived 10 min late' })).status === 200);
+const corrA = (await call('GET', '/attendance/corrections', admin)).data || [];
+ok('B admin edit is logged with name + reason', corrA.some((c) => c.changedByRole === 'admin' && c.newStatus === 'late' && c.reason === 'Arrived 10 min late'), JSON.stringify(corrA[0]));
+ok('B register reflects the edit', (await call('GET', `/attendance/register?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}`, lt)).data?.students?.[0]?.statuses?.[0] === 'late');
+ok('B register tells the UI the edit rules', (await call('GET', `/attendance/register?teachingAssignmentId=${ta.data.id}&from=${today}&to=${today}`, admin)).editing?.reasonRequired === true);
+const old = (() => { const d = new Date(); d.setDate(d.getDate() - 40); return d.toLocaleDateString('en-CA'); })();
+const oldS = await call('POST', '/attendance/sessions', lt, { teachingAssignmentId: ta.data.id, sessionDate: old, periodNo: 1 });
+ok('B lecturer marks a 40-day-old class', oldS.status === 201);
+ok('B lecturer cannot edit it after 30 days (403)', (await call('PUT', `/attendance/sessions/${oldS.data.sessionId}/records`, lt, { records: [{ studentId: sid, status: 'absent' }] })).status === 403);
+ok('B lecturer cannot delete it after 30 days (403)', (await call('DELETE', `/attendance/sessions/${oldS.data.sessionId}`, lt, { reason: 'Wrong date' })).status === 403);
+ok('B delete without reason (400)', (await call('DELETE', `/attendance/sessions/${oldS.data.sessionId}`, admin, {})).status === 400);
+ok('B admin deletes the old class', (await call('DELETE', `/attendance/sessions/${oldS.data.sessionId}`, admin, { reason: 'Marked on the wrong date' })).status === 200
+  && (await call('GET', `/attendance/sessions/${oldS.data.sessionId}`, admin)).status === 404);
+const ySes = await call('POST', '/attendance/sessions', lt, { teachingAssignmentId: ta.data.id, sessionDate: yesterday, periodNo: 1, records: [{ studentId: sid, status: 'absent' }] });
+const yRec = (await call('GET', `/attendance/student/detail?from=${yesterday}&to=${yesterday}`, st)).data?.[0];
+const yf = new FormData(); yf.append('attendanceRecordId', String(yRec.attendanceRecordId)); yf.append('reason', 'I was in class yesterday');
+const yIssue = await call('POST', '/attendance/issues', st, null, yf);
+ok('B open issue blocks delete (409)', ySes.status === 201 && yIssue.status === 201 && (await call('DELETE', `/attendance/sessions/${ySes.data.sessionId}`, lt, { reason: 'Wrong period' })).status === 409);
+ok('B after the decision the lecturer can delete it', (await call('PATCH', `/attendance/issues/${yIssue.data.id}/resolve`, lt, { decision: 'reject', remarks: 'Checked' })).status === 200
+  && (await call('DELETE', `/attendance/sessions/${ySes.data.sessionId}`, lt, { reason: 'Wrong period' })).status === 200);
+ok('B student summary for yesterday is empty again', (await call('GET', `/attendance/student/summary?from=${yesterday}&to=${yesterday}`, st)).data?.subjects?.length === 0);
+ok('B student cannot delete (403)', (await call('DELETE', `/attendance/sessions/${s1.data.sessionId}`, st, { reason: 'nope' })).status === 403);
+
 results.push('--- P3 calendar edit, upcoming, scheduled announcements');
 const evs = (await call('GET', '/calendar', lt)).data || [];
 const lecEvent = evs.find((e) => e.createdBy && e.title === 'Extra class');
