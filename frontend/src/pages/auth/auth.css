@@ -1,0 +1,76 @@
+/* Sign-in pages — same layout and palette as CampusPulse. Uses the tokens in theme-pulse.css. */
+.au-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) 7fr;
+  background: var(--cp-page);
+  color: var(--cp-text);
+  font-family: var(--cp-font);
+}
+
+.au-brand-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 40px;
+  color: #fff;
+  background: linear-gradient(160deg, var(--cp-accent) 0%, #1e1b4b 100%);
+}
+.au-brand-panel h1 { font-size: 30px; line-height: 1.25; margin: 0 0 28px; font-weight: 700; color: #fff; }
+
+.au-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.au-logo {
+  display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.au-brand-mobile { display: none; color: var(--cp-text); margin-bottom: 24px; }
+.au-brand-mobile .au-logo { background: var(--cp-accent); color: #fff; }
+
+.au-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.au-features li { display: flex; gap: 12px; align-items: flex-start; }
+.au-features strong { display: block; font-size: 15px; }
+.au-features small { opacity: 0.8; font-size: 13px; }
+.au-feature-icon {
+  display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.au-muted-light { opacity: 0.7; font-size: 12px; }
+
+.au-form-side { display: grid; place-items: center; padding: 32px 16px; }
+.au-card {
+  width: 100%; max-width: 420px; padding: 32px;
+  background: var(--cp-card); border: 1px solid var(--cp-border); border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+}
+.au-card h2 { margin: 4px 0 6px; font-size: 22px; color: var(--cp-text); }
+.au-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cp-accent); }
+.au-description { margin: 0 0 20px; color: var(--cp-text-muted); font-size: 14px; }
+
+.au-form { display: grid; gap: 14px; }
+.au-form .field { margin: 0; }
+.au-form .field label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--cp-text-2); }
+.au-form input { width: 100%; }
+.au-form .btn { width: 100%; justify-content: center; margin-top: 6px; height: 40px; }
+.au-form .alert { margin: 0; }
+
+.au-password { position: relative; display: block; }
+.au-password input { width: 100%; padding-right: 40px; }
+.au-password button {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: inline-grid; place-items: center; width: 30px; height: 30px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--cp-text-muted); cursor: pointer;
+}
+.au-password button:hover { background: var(--cp-accent-tint); }
+
+.au-row { display: flex; justify-content: flex-end; margin-top: -4px; }
+.au-footer { margin-top: 20px; text-align: center; font-size: 14px; color: var(--cp-text-muted); }
+.au-link { color: var(--cp-accent); font-weight: 600; text-decoration: none; font-size: 13px; }
+.au-link:hover { text-decoration: underline; }
+
+@media (max-width: 860px) {
+  .au-page { grid-template-columns: 1fr; }
+  .au-brand-panel { display: none; }
+  .au-brand-mobile { display: flex; }
+  .au-card { padding: 24px 20px; }
+}

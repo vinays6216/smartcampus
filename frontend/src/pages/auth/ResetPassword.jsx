@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { post } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { errMsg } from '../../utils/helpers';
+import { AuthLayout, PasswordInput } from './AuthLayout';
 
 // Opened from the e-mailed link:  /reset-password?token=...
 export default function ResetPassword() {
@@ -23,17 +24,16 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="login-wrap">
-      <div className="login-card">
-        <h1>🔑 Set new password</h1>
-        <form onSubmit={submit}>
-          {error && <div className="alert alert-error">{error}</div>}
-          <div className="field"><label>New password (min 8 characters)</label>
-            <input type="password" minLength={8} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></div>
-          <button className="btn btn-primary">Reset password</button>
-          <Link to="/login">Back to login</Link>
-        </form>
-      </div>
-    </div>
+    <AuthLayout eyebrow="Account help" title="Set a new password" description="Choose a password of at least 8 characters."
+      footer={<Link className="au-link" to="/login">Back to sign in</Link>}>
+      <form className="au-form" onSubmit={submit}>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label htmlFor="newPassword">New password</label>
+          <PasswordInput id="newPassword" minLength={8} required autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+        </div>
+        <button className="btn btn-primary">Reset password</button>
+      </form>
+    </AuthLayout>
   );
 }
