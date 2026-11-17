@@ -32,6 +32,20 @@ module.exports = async function canAccessFile(user, file) {
     return rows.length > 0;
   }
 
+  // leave proofs: lecturers of the student's section (the student is the uploader)
+  if (user.role === 'lecturer') {
+    try {
+      const [leave] = await pool.query(
+        `SELECT 1 FROM leave_requests lr JOIN students s ON s.id = lr.student_id
+          WHERE lr.proof_file_id = ? AND s.section_id IN (SELECT section_id FROM teaching_assignments WHERE lecturer_id = ?) LIMIT 1`,
+        [file.id, user.profileId]
+      );
+      if (leave.length) return true;
+    } catch (e) {
+      if (!e || e.code !== 'ER_NO_SUCH_TABLE') throw e;
+    }
+  }
+
   if (user.role === 'lecturer') {
     const [rows] = await pool.query(
       `SELECT 1 FROM study_materials sm

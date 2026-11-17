@@ -6,8 +6,9 @@ const { todayLocal } = require('../../utils/sql');
 const { assertTeaches } = require('../../utils/ownership');
 const { saveFileRecord } = require('../../utils/files');
 const { notifyUsers } = require('../../utils/notify');
-const { attendanceRule, RULE_SQL, summarize } = require('../../utils/attendanceRule');
+const { attendanceRule, RULE_SQL, summarize, margin } = require('../../utils/attendanceRule');
 const { audit } = require('../../utils/audit');
+const { approvedLeaveOn } = require('../leave/leave.controller');
 
 // =====================================================================
 //  STUDENT
@@ -47,7 +48,11 @@ exports.mySummary = asyncHandler(async (req, res) => {
       rule: attendanceRule(),
       minRequiredPercent: env.attendanceMinPercent,
       overallPercentage: overall,
-      subjects: subjects.map((s) => ({ ...s, belowMinimum: s.attendance_percentage !== null && s.attendance_percentage < env.attendanceMinPercent })),
+      overall: { ...margin(attended, total, env.attendanceMinPercent) },
+      subjects: subjects.map((s) => {
+        const m = margin(s.attended_classes, s.total_classes, env.attendanceMinPercent);
+        return { ...s, belowMinimum: s.attendance_percentage !== null && s.attendance_percentage < env.attendanceMinPercent, classes_to_reach: m.toReach, can_miss: m.canMiss };
+      }),
     },
   });
 });
@@ -178,9 +183,13 @@ exports.createSession = asyncHandler(async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [b.teachingAssignmentId, b.sessionDate, b.periodNo, b.startTime || null, b.endTime || null, b.topic || null, req.user.profileId]
     );
+    // students on approved leave that day start as excused (an explicit mark from the lecturer still wins)
+    const onLeave = await approvedLeaveOn(conn, [...roster], b.sessionDate);
     const rows = [...roster].map((studentId) => {
       const m = marks.get(studentId);
-      return [s.insertId, studentId, m ? m.status : 'present', m ? m.remarks || null : null];
+      if (m) return [s.insertId, studentId, m.status, m.remarks || null];
+      if (onLeave.has(studentId)) return [s.insertId, studentId, 'excused', `On leave (#${onLeave.get(studentId)})`];
+      return [s.insertId, studentId, 'present', null];
     });
     await conn.query('INSERT INTO attendance_records (session_id, student_id, status, remarks) VALUES ?', [rows]);
     return s.insertId;
