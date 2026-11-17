@@ -8,7 +8,7 @@ const AREAS = {
   timetable: 'Timetables',
   attendance: 'Attendance (reports, issues, corrections, editing)',
   announcements: 'Announcements & calendar',
-  assignments: 'Assignments & study materials',
+  assignments: 'Assignments, study materials & internal marks',
 };
 const ALL = Object.keys(AREAS);
 

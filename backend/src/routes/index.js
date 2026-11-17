@@ -10,6 +10,7 @@ router.use('/teaching', require('../modules/teaching/teaching.routes'));
 router.use('/timetables', require('../modules/timetable/timetable.routes'));
 router.use('/attendance', require('../modules/attendance/attendance.routes'));
 router.use('/leave', require('../modules/leave/leave.routes'));
+router.use('/marks', require('../modules/marks/marks.routes'));
 router.use('/assignments', require('../modules/assignments/assignments.routes'));
 router.use('/materials', require('../modules/materials/materials.routes'));
 router.use('/announcements', require('../modules/announcements/announcements.routes'));
