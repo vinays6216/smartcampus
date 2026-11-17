@@ -57,7 +57,7 @@ export default function Submissions() {
                   {f.data.map((s) => (
                     <tr key={s.id}>
                       <td>{s.usn}</td><td>{s.fullName}</td>
-                      <td><Badge value={s.status} />{!!s.isLate && <> <Badge value="late" /></>}</td>
+                      <td><Badge value={s.status} />{s.status === 'submitted' && (s.isLate ? <> <Badge value="late" /></> : <> <Badge value="on_time" tone="green">on time</Badge></>)}</td>
                       <td>
                         {s.submissionMode === 'manual' && 'In person'}
                         {s.submissionUrl && <a href={s.submissionUrl} target="_blank" rel="noreferrer">Open link</a>}

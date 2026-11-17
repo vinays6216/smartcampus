@@ -73,7 +73,7 @@ export default function AssignmentDetail() {
               {submitted ? (
                 <>
                   <div className="alert alert-info">
-                    Submitted <strong>{a.submissionMode}</strong> on {fmtDateTime(a.submittedAt)} {a.isLate ? <Badge value="late" /> : null}
+                    Submitted <strong>{a.submissionMode}</strong> on {fmtDateTime(a.submittedAt)} {a.isLate ? <Badge value="late" /> : <Badge value="on_time" tone="green">on time</Badge>}
                   </div>
                   {a.submissionUrl && <p>Link: <a href={a.submissionUrl} target="_blank" rel="noreferrer">{a.submissionUrl}</a></p>}
                   {a.myFiles?.map((x) => (
