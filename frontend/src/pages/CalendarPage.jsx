@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { del, get, post } from '../api/client';
+import { del, get, post, put } from '../api/client';
 import useFetch from '../hooks/useFetch';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -19,6 +19,7 @@ export default function CalendarPage() {
   const isAdmin = user.role === 'admin';
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null); // event being edited
 
   const last = new Date(cursor.y, cursor.m + 1, 0).getDate();
   const from = `${cursor.y}-${pad(cursor.m + 1)}-01`;
@@ -54,6 +55,17 @@ export default function CalendarPage() {
     setCreating(false);
     f.reload();
   };
+
+  // section cannot be changed after creation; '' clears optional fields
+  const editFields = fields.filter((x) => x.name !== 'sectionId');
+  const update = async (v) => {
+    const { title, eventType, eventDate, startTime, endTime, location, description } = v;
+    await put(`/calendar/${editing.id}`, { title, eventType, eventDate, startTime: startTime ? startTime.slice(0, 5) : '', endTime: endTime ? endTime.slice(0, 5) : '', location, description });
+    toast.success('Event updated');
+    setEditing(null);
+    f.reload();
+  };
+  const canChange = (e) => isAdmin || e.createdBy === user.id;
 
   const remove = async (id) => {
     if (!window.confirm('Delete this event?')) return;
@@ -107,13 +119,25 @@ export default function CalendarPage() {
                 </div>
                 {e.description && <div>{e.description}</div>}
               </div>
-              {isStaff && <button className="btn btn-sm btn-danger" onClick={() => remove(e.id)}>Delete</button>}
+              {isStaff && canChange(e) && (
+                <div className="btn-group">
+                  <button className="btn btn-sm" onClick={() => setEditing(e)}>Edit</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => remove(e.id)}>Delete</button>
+                </div>
+              )}
             </div>
           ))}
         </Async>
       </div>
 
       <FormModal open={creating} title="Add calendar event" fields={fields} wide submitLabel="Add" onSubmit={create} onClose={() => setCreating(false)} />
+      <FormModal
+        open={!!editing} title="Edit calendar event" fields={editFields} wide submitLabel="Save changes"
+        initial={editing ? { ...editing, startTime: editing.startTime ? editing.startTime.slice(0, 5) : '', endTime: editing.endTime ? editing.endTime.slice(0, 5) : '' } : {}}
+        onSubmit={update} onClose={() => setEditing(null)}
+      >
+        {editing?.announcementId && <div className="alert alert-info full">This event belongs to an announcement; the announcement text is not changed.</div>}
+      </FormModal>
     </>
   );
 }

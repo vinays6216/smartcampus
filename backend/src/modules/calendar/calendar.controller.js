@@ -26,7 +26,7 @@ exports.list = asyncHandler(async (req, res) => {
 
   const [rows] = await pool.query(
     `SELECT ce.id, ce.announcement_id, ce.title, ce.description, ce.event_type, ce.event_date, ce.start_time, ce.end_time,
-            ce.location, ce.section_id, sec.name AS section_name, ce.subject_id, sub.name AS subject_name
+            ce.location, ce.section_id, sec.name AS section_name, ce.subject_id, sub.name AS subject_name, ce.created_by
        FROM calendar_events ce
        LEFT JOIN sections sec ON sec.id = ce.section_id
        LEFT JOIN subjects sub ON sub.id = ce.subject_id
@@ -61,6 +61,50 @@ exports.create = asyncHandler(async (req, res) => {
     return r.insertId;
   });
   res.status(201).json({ success: true, data: { id } });
+});
+
+exports.update = asyncHandler(async (req, res) => {
+  const [rows] = await pool.query(
+    'SELECT id, title, event_date, start_time, end_time, section_id, created_by FROM calendar_events WHERE id = ?',
+    [req.params.id]
+  );
+  const ev = rows[0];
+  if (!ev) throw new ApiError(404, 'Event not found');
+  if (req.user.role !== 'admin' && ev.created_by !== req.user.id) throw new ApiError(403, 'You can edit only your own events');
+
+  const b = req.body;
+  const map = {
+    title: 'title', description: 'description', eventType: 'event_type', eventDate: 'event_date',
+    startTime: 'start_time', endTime: 'end_time', location: 'location',
+  };
+  const sets = [];
+  const values = [];
+  for (const [key, column] of Object.entries(map)) {
+    if (b[key] === undefined) continue;
+    sets.push(`${column} = ?`);
+    values.push(b[key] === '' ? null : b[key]); // '' clears an optional field
+  }
+  if (!sets.length) throw new ApiError(400, 'Nothing to update');
+
+  const start = b.startTime !== undefined ? b.startTime || null : ev.start_time;
+  const end = b.endTime !== undefined ? b.endTime || null : ev.end_time;
+  if (start && end && String(end).slice(0, 5) <= String(start).slice(0, 5)) throw new ApiError(400, 'End time must be after start time');
+
+  await withTransaction(async (conn) => {
+    await conn.query(`UPDATE calendar_events SET ${sets.join(', ')} WHERE id = ?`, [...values, ev.id]);
+    // tell the section when the date or time moved
+    const moved = (b.eventDate && b.eventDate !== ev.event_date)
+      || (b.startTime !== undefined && (b.startTime || null) !== (ev.start_time ? String(ev.start_time).slice(0, 5) : null));
+    if (ev.section_id && moved) {
+      const date = b.eventDate || ev.event_date;
+      const userIds = [...(await sectionStudentUserIds(conn, ev.section_id)), ...(await sectionLecturerUserIds(conn, ev.section_id))];
+      await notifyUsers(conn, userIds.filter((u) => u !== req.user.id), {
+        type: 'calendar_event', title: `Event changed: ${b.title || ev.title}`,
+        message: `${date}${start ? ` at ${String(start).slice(0, 5)}` : ''}`, entityType: 'calendar_event', entityId: ev.id,
+      });
+    }
+  });
+  res.json({ success: true, message: 'Event updated' });
 });
 
 exports.remove = asyncHandler(async (req, res) => {

@@ -3,7 +3,8 @@ import { get } from '../api/client';
 import useFetch from '../hooks/useFetch';
 import { useAuth } from '../context/AuthContext';
 import { Async, Badge, Empty, PageHeader, StatCard } from '../components/ui';
-import { fmtDateTime, timeLeft } from '../utils/format';
+import { fmtDate, fmtDateTime, fmtTime, timeLeft } from '../utils/format';
+import { label } from '../utils/helpers';
 
 // Student only: assignment alerts (due within 24 h + overdue) and latest announcements
 function StudentExtras() {
@@ -49,6 +50,55 @@ function StudentExtras() {
   );
 }
 
+// Every role: calendar events and assignment deadlines in the next 7 days
+function Upcoming({ role }) {
+  const f = useFetch(() => get('/dashboard/upcoming'), []);
+  const events = f.data?.events || [];
+  const deadlines = f.data?.deadlines || [];
+  const assignmentLink = (id) => (role === 'student' ? `/assignments/${id}` : `/manage-assignments/${id}/submissions`);
+  return (
+    <div className="grid-2">
+      <div className="card">
+        <h2>Upcoming events (7 days)</h2>
+        <Async f={f}>
+          {!events.length && <Empty>No events in the next 7 days.</Empty>}
+          {events.map((e) => (
+            <div key={e.id} className="list-item row">
+              <div>
+                <strong>{e.title}</strong>
+                <div className="muted">
+                  {fmtDate(e.eventDate)}{e.startTime && ` - ${fmtTime(e.startTime)}${e.endTime ? ` to ${fmtTime(e.endTime)}` : ''}`}
+                  {e.location && ` - ${e.location}`}{e.sectionName ? ` - Section ${e.sectionName}` : ' - Whole campus'}
+                </div>
+              </div>
+              <Badge value={e.eventType} tone="blue">{label(e.eventType)}</Badge>
+            </div>
+          ))}
+          <Link to="/calendar">Open calendar</Link>
+        </Async>
+      </div>
+      <div className="card">
+        <h2>Deadlines (7 days)</h2>
+        <Async f={f}>
+          {!deadlines.length && <Empty>No assignment deadlines in the next 7 days.</Empty>}
+          {deadlines.map((a) => (
+            <div key={a.id} className="list-item row">
+              <div>
+                <Link to={assignmentLink(a.id)}><strong>{a.title}</strong></Link>
+                <div className="muted">{a.subjectName}{a.sectionName ? ` - Section ${a.sectionName}` : ''} - due {fmtDateTime(a.deadline)}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {role === 'student' ? <Badge value={a.displayStatus} /> : <span className="muted">{a.submittedCount}/{a.totalStudents} submitted</span>}
+                <div className="muted">{timeLeft(a.deadline)}</div>
+              </div>
+            </div>
+          ))}
+        </Async>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const f = useFetch(() => get('/dashboard'), []);
@@ -73,6 +123,7 @@ export default function Dashboard() {
               <StatCard label="Unread alerts" value={d.unreadNotifications} to="/notifications" />
             </div>
             <StudentExtras />
+            <Upcoming role="student" />
           </>
         )}
 
@@ -85,6 +136,7 @@ export default function Dashboard() {
             <StatCard label="Unread alerts" value={d.unreadNotifications} to="/notifications" />
           </div>
         )}
+        {user.role === 'lecturer' && <Upcoming role="lecturer" />}
 
         {user.role === 'admin' && (
           <div className="grid">
@@ -95,6 +147,7 @@ export default function Dashboard() {
             <StatCard label="Unread alerts" value={d.unreadNotifications} to="/notifications" />
           </div>
         )}
+        {user.role === 'admin' && <Upcoming role="admin" />}
       </Async>
     </>
   );
